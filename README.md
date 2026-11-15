@@ -12,12 +12,34 @@ Starter mengikuti stack INKLUSA.
 
 ## Menjalankan
 
+Butuh Node.js 22+ (dipakai `@google/genai` dan ekstraksi PDF `unpdf`).
+
 ```bash
 bun install
-cp .env.example .env   # isi DATABASE_URL, DIRECT_URL, BETTER_AUTH_SECRET
-bun run db:push        # buat tabel auth di database
+cp .env.example .env   # isi DATABASE_URL, DIRECT_URL, BETTER_AUTH_SECRET, GEMINI_API_KEY
+bun run db:push        # buat tabel auth + NusaTara di database
 bun run dev
 ```
+
+## API (Elysia, dokumentasi interaktif di `/api/labs`)
+
+| Method | Endpoint | Akses | Fungsi |
+| --- | --- | --- | --- |
+| `POST` | `/api/modules/convert` | Guru | Konversi materi (teks / PDF / TXT) via Gemini: naskah audio, ringkasan visual, draf soal. Tidak disimpan. |
+| `POST` | `/api/modules` | Guru | Simpan modul hasil konversi |
+| `GET` | `/api/modules` | Publik | Daftar modul (ringan, tanpa isi), `?q=&page=&pageSize=` |
+| `GET` | `/api/modules/mine` | Guru | Daftar modul milik guru |
+| `GET` | `/api/modules/:id` | Publik | Isi lengkap modul untuk portal siswa |
+| `POST` | `/api/exams` | Guru | Buat sesi ujian + PIN 4 digit unik (di antara ujian aktif) |
+| `GET` | `/api/exams` | Guru | Daftar ujian guru + jumlah pengumpulan & rata-rata nilai |
+| `PATCH` | `/api/exams/:id` | Guru | `{ isActive }` tutup/buka ujian. Ujian tertutup menolak jawaban dan PIN-nya bisa dipakai ulang |
+| `GET` | `/api/exams/:pin` | Publik | Soal untuk ujian suara, tanpa kunci jawaban |
+| `POST` | `/api/exams/:pin/submit` | Publik | Kirim jawaban, nilai dihitung di server |
+| `GET` | `/api/submissions` | Guru | Nilai siswa untuk ujian milik guru, `?examId=` |
+| `POST` | `/api/sign-logs` | Publik | Simpan transkrip bahasa isyarat (terhubung ke guru bila perangkat sedang login) |
+| `GET` | `/api/sign-logs` | Guru | Transkrip milik guru + yang tanpa guru, `?after=<ISO>` untuk polling |
+
+Semua error berbentuk `{ message }` (422 validasi juga menyertakan `errors[]`).
 
 ## Struktur
 
@@ -30,7 +52,12 @@ src/
 ├── auth.ts                         # Konfigurasi Better Auth
 ├── backend/
 │   ├── modules/<fitur>/            # index.ts (routes), model.ts (validasi), service.ts (query db)
-│   └── utils/better-auth/          # handler /api/auth/* dan macro { auth } / { adminOnly }
+│   │                               # learning-modules, exams, submissions, sign-logs, profile
+│   └── utils/
+│       ├── better-auth/            # handler /api/auth/* dan macro { auth } / { adminOnly } / { optionalAuth }
+│       ├── gemini.ts               # Klien Gemini (Interactions API + structured output tervalidasi)
+│       ├── error.ts                # Pemetaan error global ke { message }
+│       └── model.ts                # Skema TypeBox bersama (soal, ringkasan visual, paginasi)
 ├── db/
 │   ├── index.ts                    # Koneksi Drizzle + pg Pool
 │   └── schema/                     # Tabel Drizzle (daftarkan di schema/index.ts)

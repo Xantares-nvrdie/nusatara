@@ -73,7 +73,8 @@ async function readMaterialSource({ content, file }: Pick<ConvertBody, "content"
         let extracted: { totalPages: number; text: string };
         try {
             extracted = await extractText(bytes.slice(), { mergePages: true });
-        } catch {
+        } catch (error) {
+            console.warn("[modules] PDF text extraction failed:", error instanceof Error ? error.message : error);
             throw status(422, {
                 message: "PDF tidak dapat dibaca. Pastikan file tidak rusak atau terkunci kata sandi.",
             });

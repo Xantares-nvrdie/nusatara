@@ -3,8 +3,11 @@ import { Value } from "@sinclair/typebox/value";
 import { type Static, status, type TSchema } from "elysia";
 
 const DEFAULT_MODEL = "gemini-3.8-flash";
-/** Stays below the API route's `maxDuration` (60s) so we can still answer with a clean error. */
-const REQUEST_TIMEOUT_MS = 50_000;
+/**
+ * Wall-clock budget for one call, including the SDK's automatic retries on 429/5xx.
+ * Stays below the API route's `maxDuration` (60s) so we can still answer with a clean error.
+ */
+const REQUEST_DEADLINE_MS = 50_000;
 
 let client: GoogleGenAI | undefined;
 
@@ -64,6 +67,8 @@ export async function generateStructured<T extends TSchema>({
     maxOutputTokens,
 }: GenerateStructuredOptions<T>): Promise<Static<T>> {
     const ai = getClient();
+    // A shared signal bounds all retry attempts together; the SDK's `timeout_ms` would restart per attempt.
+    const deadline = AbortSignal.timeout(REQUEST_DEADLINE_MS);
 
     let interaction: Awaited<ReturnType<typeof ai.interactions.create>>;
     try {
@@ -81,10 +86,10 @@ export async function generateStructured<T extends TSchema>({
                     schema: toGeminiSchema(schema),
                 },
             },
-            { timeout_ms: REQUEST_TIMEOUT_MS },
+            { signal: deadline },
         );
     } catch (error) {
-        throw toHttpError(error);
+        throw toHttpError(error, deadline.aborted);
     }
 
     if (interaction.status !== "completed" || !interaction.output_text) {
@@ -109,21 +114,38 @@ export async function generateStructured<T extends TSchema>({
     return cleaned as Static<T>;
 }
 
-function toHttpError(error: unknown) {
-    const err = error as { name?: unknown; status?: unknown; statusCode?: unknown; message?: unknown };
+type ProviderError = { name?: unknown; status?: unknown; statusCode?: unknown; message?: unknown; body?: unknown };
+
+/** The SDK has several error classes; they expose the HTTP status as `statusCode` and/or `status`. */
+function toHttpError(error: unknown, timedOut: boolean) {
+    const err = (error ?? {}) as ProviderError;
     const httpStatus =
         typeof err.statusCode === "number" ? err.statusCode : typeof err.status === "number" ? err.status : undefined;
-    const name = typeof err.name === "string" ? err.name : "";
-    console.error(`[gemini] Request failed (${name || "Error"}, status ${httpStatus ?? "n/a"}): ${err.message}`);
+    const body = typeof err.body === "string" ? err.body : "";
+    console.error(
+        `[gemini] Request failed (${String(err.name ?? "Error")}, status ${httpStatus ?? "n/a"}): ${providerMessage(body) ?? err.message}`,
+    );
 
-    if (/timeout|abort|continuation/i.test(name)) {
+    if (timedOut) {
         return status(504, { message: "AI terlalu lama merespons. Coba lagi atau persingkat materi." });
     }
     if (httpStatus === 429) {
         return status(429, { message: "Kuota AI sedang penuh. Tunggu sebentar lalu coba lagi." });
     }
-    if (httpStatus === 401 || httpStatus === 403) {
+    // An invalid key is reported as 400 with reason API_KEY_INVALID, not as 401.
+    if (httpStatus === 401 || httpStatus === 403 || body.includes("API_KEY_INVALID")) {
         return status(503, { message: "Layanan AI belum dikonfigurasi dengan benar. Hubungi admin." });
     }
     return status(502, { message: "Gagal memproses materi dengan AI. Silakan coba lagi." });
+}
+
+/** Extracts `error.message` from a Google API error body (object or single-item array). */
+function providerMessage(body: string): string | undefined {
+    try {
+        const parsed = JSON.parse(body) as unknown;
+        const first = (Array.isArray(parsed) ? parsed[0] : parsed) as { error?: { message?: unknown } } | undefined;
+        return typeof first?.error?.message === "string" ? first.error.message : undefined;
+    } catch {
+        return undefined;
+    }
 }
