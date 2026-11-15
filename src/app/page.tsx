@@ -8,6 +8,9 @@ export default function Home() {
             <a className="text-primary underline" href="/api/labs">
                 API docs → /api/labs
             </a>
+            <a className="text-primary underline" href="/lab/isyarat">
+                Uji MediaPipe isyarat → /lab/isyarat
+            </a>
         </main>
     );
 }
