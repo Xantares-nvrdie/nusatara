@@ -18,8 +18,20 @@ Butuh Node.js 22+ (dipakai `@google/genai` dan ekstraksi PDF `unpdf`).
 bun install
 cp .env.example .env   # isi DATABASE_URL, DIRECT_URL, BETTER_AUTH_SECRET, GEMINI_API_KEY
 bun run db:push        # buat tabel auth + NusaTara di database
+bun run db:seed        # opsional: akun guru demo, modul, ujian, nilai, log isyarat
 bun run dev
 ```
+
+### Data demo (`bun run db:seed`)
+
+Semua akun memakai password `password123`. Seeder aman dijalankan ulang: data milik akun demo direset, data akun lain tidak disentuh.
+
+| Akun | Modul | PIN ujian |
+| --- | --- | --- |
+| `guru@nusatara.id` (Sari Wulandari) | Fotosintesis, Siklus Air | `1234`, `2345` |
+| `guru2@nusatara.id` (Yohanes Kambu) | Pecahan Sederhana, Keragaman Budaya Indonesia | `3456`, `4567` |
+
+Jika PIN di atas sudah dipakai ujian aktif guru lain, seeder memakai PIN acak dan menampilkannya di akhir.
 
 ## API (Elysia, dokumentasi interaktif di `/api/labs`)
 
@@ -78,3 +90,4 @@ src/
 | `bun run build` / `start` | Build & jalankan produksi |
 | `bun run lint` / `format` | Biome |
 | `bun run db:generate` / `db:push` / `db:studio` | Drizzle Kit |
+| `bun run db:seed` | Isi data demo (lihat "Data demo") |
