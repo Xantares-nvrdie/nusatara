@@ -1,5 +1,4 @@
 import { type Static, type TSchema, t } from "elysia";
-import { SIGN_LOG_SOURCES } from "@/db/schema/sign-logs";
 
 /** Shared DTOs reused across backend modules. */
 export const IdParams = t.Object({ id: t.String({ format: "uuid" }) });
@@ -113,6 +112,3 @@ export const SubmissionAnswer = t.Object({
     isCorrect: t.Boolean(),
 });
 export type SubmissionAnswer = Static<typeof SubmissionAnswer>;
-
-export const SignLogSource = t.UnionEnum(SIGN_LOG_SOURCES);
-export type SignLogSource = Static<typeof SignLogSource>;

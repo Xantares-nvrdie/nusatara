@@ -10,7 +10,7 @@ import { LearningModuleModel } from "@/backend/modules/learning-modules/model";
 import { LearningModuleService } from "@/backend/modules/learning-modules/service";
 import { isUniqueViolation } from "@/backend/utils/query";
 import { db } from "./index";
-import { account, EXAM_ACTIVE_PIN_INDEX, exams, learningModules, signLogs, user } from "./schema";
+import { account, EXAM_ACTIVE_PIN_INDEX, exams, learningModules, user } from "./schema";
 import { DEMO_PASSWORD, SEED_TEACHERS } from "./seed-data";
 
 /**
@@ -98,7 +98,6 @@ async function main() {
     const accounts: { email: string; name: string; status: string }[] = [];
     const examRows: { teacher: string; title: string; pin: string; preferred: string; submissions: number }[] = [];
     let moduleCount = 0;
-    let signLogCount = 0;
 
     for (const seed of SEED_TEACHERS) {
         const teacher = await upsertTeacher(seed.name, seed.email);
@@ -107,7 +106,6 @@ async function main() {
         // Reset this demo teacher's data. Deleting exams cascades to their submissions.
         await db.delete(exams).where(eq(exams.teacherId, teacher.id));
         await db.delete(learningModules).where(eq(learningModules.teacherId, teacher.id));
-        await db.delete(signLogs).where(eq(signLogs.teacherId, teacher.id));
 
         for (const { exam, ...moduleData } of seed.modules) {
             const created = await LearningModuleService.create(teacher, moduleData);
@@ -138,23 +136,9 @@ async function main() {
                 submissions: exam.submissions.length,
             });
         }
-
-        if (seed.signLogs.length > 0) {
-            const now = Date.now();
-            await db.insert(signLogs).values(
-                seed.signLogs.map((log) => ({
-                    teacherId: teacher.id,
-                    studentName: log.studentName ?? null,
-                    transcript: log.transcript,
-                    source: log.source,
-                    createdAt: new Date(now - log.minutesAgo * 60_000),
-                })),
-            );
-            signLogCount += seed.signLogs.length;
-        }
     }
 
-    console.log(`\n✅ Selesai: ${moduleCount} modul, ${examRows.length} ujian, ${signLogCount} log isyarat.\n`);
+    console.log(`\n✅ Selesai: ${moduleCount} modul, ${examRows.length} ujian.\n`);
     console.log(`👤 Akun guru (password: ${DEMO_PASSWORD})`);
     console.table(accounts);
     console.log("📝 PIN ujian aktif");

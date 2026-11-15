@@ -18,7 +18,7 @@ Butuh Node.js 22+ (dipakai `@google/genai` dan ekstraksi PDF `unpdf`).
 bun install
 cp .env.example .env   # isi DATABASE_URL, DIRECT_URL, BETTER_AUTH_SECRET, GEMINI_API_KEY
 bun run db:push        # buat tabel auth + NusaTara di database
-bun run db:seed        # opsional: akun guru demo, modul, ujian, nilai, log isyarat
+bun run db:seed        # opsional: akun guru demo, modul, ujian, nilai
 bun run dev
 ```
 
@@ -48,8 +48,6 @@ Jika PIN di atas sudah dipakai ujian aktif guru lain, seeder memakai PIN acak da
 | `GET` | `/api/exams/:pin` | Publik | Soal untuk ujian suara, tanpa kunci jawaban |
 | `POST` | `/api/exams/:pin/submit` | Publik | Kirim jawaban, nilai dihitung di server |
 | `GET` | `/api/submissions` | Guru | Nilai siswa untuk ujian milik guru, `?examId=` |
-| `POST` | `/api/sign-logs` | Publik | Simpan transkrip bahasa isyarat (terhubung ke guru bila perangkat sedang login) |
-| `GET` | `/api/sign-logs` | Guru | Transkrip milik guru + yang tanpa guru, `?after=<ISO>` untuk polling |
 
 Semua error berbentuk `{ message }` (422 validasi juga menyertakan `errors[]`).
 
@@ -64,9 +62,9 @@ src/
 ├── auth.ts                         # Konfigurasi Better Auth
 ├── backend/
 │   ├── modules/<fitur>/            # index.ts (routes), model.ts (validasi), service.ts (query db)
-│   │                               # learning-modules, exams, submissions, sign-logs, profile
+│   │                               # learning-modules, exams, submissions, profile
 │   └── utils/
-│       ├── better-auth/            # handler /api/auth/* dan macro { auth } / { adminOnly } / { optionalAuth }
+│       ├── better-auth/            # handler /api/auth/* dan macro { auth } / { adminOnly }
 │       ├── gemini.ts               # Klien Gemini (Interactions API + structured output tervalidasi)
 │       ├── error.ts                # Pemetaan error global ke { message }
 │       └── model.ts                # Skema TypeBox bersama (soal, ringkasan visual, paginasi)

@@ -19,7 +19,6 @@
     "dependencies": {
         "@elysiajs/openapi": "^1.4.11",
         "@google/genai": "^3.3.0",
-        "@mediapipe/tasks-vision": "1.2.3",
         "@sinclair/typebox": "^0.34.52",
         "better-auth": "^1.4.7",
         "class-variance-authority": "^0.7.1",

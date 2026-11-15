@@ -1,4 +1,4 @@
-import type { AnswerKey, DeafVisualSummary, ExamQuestionInput, SignLogSource } from "@/backend/utils/model";
+import type { AnswerKey, DeafVisualSummary, ExamQuestionInput } from "@/backend/utils/model";
 
 /** Shared password for every demo account (documented for judges in the proposal). */
 export const DEMO_PASSWORD = "password123";
@@ -22,7 +22,6 @@ export type SeedTeacher = {
     name: string;
     email: string;
     modules: SeedModule[];
-    signLogs: { studentName?: string; transcript: string; source: SignLogSource; minutesAgo: number }[];
 };
 
 const fotosintesis: SeedModule = {
@@ -448,22 +447,10 @@ export const SEED_TEACHERS: SeedTeacher[] = [
         name: "Sari Wulandari, S.Pd.",
         email: "guru@nusatara.id",
         modules: [fotosintesis, siklusAir],
-        signLogs: [
-            { studentName: "Maria Ndun", transcript: "Hadir", source: "CAMERA", minutesAgo: 45 },
-            { studentName: "Yosef Bria", transcript: "Hadir", source: "QUICK_CARD", minutesAgo: 44 },
-            { studentName: "Rina Seran", transcript: "Izin bertanya", source: "QUICK_CARD", minutesAgo: 30 },
-            { studentName: "Rina Seran", transcript: "APA ITU STOMATA", source: "CAMERA", minutesAgo: 29 },
-            { studentName: "Maria Ndun", transcript: "Mengerti", source: "CAMERA", minutesAgo: 20 },
-            { transcript: "Butuh bantuan", source: "QUICK_CARD", minutesAgo: 5 },
-        ],
     },
     {
         name: "Yohanes Kambu, S.Pd.",
         email: "guru2@nusatara.id",
         modules: [pecahan, keragamanBudaya],
-        signLogs: [
-            { studentName: "Siti Wenda", transcript: "Hadir", source: "CAMERA", minutesAgo: 90 },
-            { studentName: "Agus Kogoya", transcript: "Belum mengerti", source: "QUICK_CARD", minutesAgo: 60 },
-        ],
     },
 ];
