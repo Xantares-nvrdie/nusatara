@@ -1,3 +1,6 @@
 // Auth (managed by better-auth)
 export * from "./auth";
-// Add feature tables here, e.g. export * from "./products";
+// NusaTara features
+export * from "./exams";
+export * from "./learning-modules";
+export * from "./sign-logs";
