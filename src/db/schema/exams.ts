@@ -36,7 +36,9 @@ export const exams = pgTable(
     },
     (table) => [
         // A 4-digit PIN only has 10,000 values, so uniqueness is enforced among active exams only.
-        uniqueIndex(EXAM_ACTIVE_PIN_INDEX).on(table.pin).where(sql`${table.isActive}`),
+        uniqueIndex(EXAM_ACTIVE_PIN_INDEX)
+            .on(table.pin)
+            .where(sql`${table.isActive}`),
         check("exams_pin_format_chk", sql`${table.pin} ~ '^[0-9]{4}$'`),
         index("exams_teacher_id_created_at_idx").on(table.teacherId, table.createdAt),
         index("exams_module_id_idx").on(table.moduleId),

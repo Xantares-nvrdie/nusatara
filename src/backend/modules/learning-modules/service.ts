@@ -74,10 +74,14 @@ async function readMaterialSource({ content, file }: Pick<ConvertBody, "content"
         try {
             extracted = await extractText(bytes.slice(), { mergePages: true });
         } catch {
-            throw status(422, { message: "PDF tidak dapat dibaca. Pastikan file tidak rusak atau terkunci kata sandi." });
+            throw status(422, {
+                message: "PDF tidak dapat dibaca. Pastikan file tidak rusak atau terkunci kata sandi.",
+            });
         }
         if (extracted.totalPages > MAX_PDF_PAGES) {
-            throw status(422, { message: `PDF maksimal ${MAX_PDF_PAGES} halaman. Bagi materi menjadi beberapa modul.` });
+            throw status(422, {
+                message: `PDF maksimal ${MAX_PDF_PAGES} halaman. Bagi materi menjadi beberapa modul.`,
+            });
         }
         const text = assertLength(normalizeText(extracted.text));
         return { kind: "pdf", base64, text, needsTranscription: text.length < MIN_PDF_TEXT_CHARS };
