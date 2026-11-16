@@ -124,6 +124,7 @@ async function main() {
             // Submit through the real service so scores use the production scoring logic.
             for (const s of exam.submissions) {
                 await ExamService.submit(row.pin, {
+                    attemptId: randomUUID(),
                     studentName: s.studentName,
                     answers: s.answers.flatMap((answer, i) => (answer ? [{ questionId: i + 1, answer }] : [])),
                 });

@@ -70,3 +70,6 @@ Thumbs.db
 *.MD
 !README.md
 
+# local design artifacts
+/docs/diagrams/nusatara-user-flows.figcraft
+

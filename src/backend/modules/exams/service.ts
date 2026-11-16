@@ -11,7 +11,10 @@ import type { CreateExamBody, ListExamsQuery, SubmitExamBody } from "./model";
 const PIN_ATTEMPTS = 10;
 
 const EXAM_NOT_FOUND = { message: "Ujian tidak ditemukan." };
-const PIN_NOT_FOUND = { message: "PIN ujian tidak ditemukan atau ujian sudah ditutup." };
+// Codes let a student device decide what to do: keep its answers (EXAM_CLOSED) or ask for a new PIN (PIN_NOT_FOUND).
+const PIN_NOT_FOUND = { code: "PIN_NOT_FOUND", message: "PIN ujian tidak ditemukan." };
+const EXAM_CLOSED = { code: "EXAM_CLOSED", message: "Ujian sudah ditutup. Minta guru membukanya kembali." };
+const ATTEMPT_CONFLICT = { code: "ATTEMPT_CONFLICT", message: "Kode percobaan ini sudah dipakai untuk ujian lain." };
 
 const teacherExamColumns = {
     id: exams.id,
@@ -27,6 +30,59 @@ const teacherExamColumns = {
 const generatePin = () => randomInt(0, 10_000).toString().padStart(4, "0");
 
 const activeExamByPin = (pin: string) => and(eq(exams.pin, pin), eq(exams.isActive, true));
+
+/** The active exam for a PIN. A PIN that only belongs to closed exams is reported as closed, not as unknown. */
+async function findActiveExam(pin: string) {
+    const [exam] = await db
+        .select({ id: exams.id, title: exams.title, questions: exams.questions })
+        .from(exams)
+        .where(activeExamByPin(pin))
+        .limit(1);
+    if (exam) return exam;
+
+    const [closed] = await db.select({ id: exams.id }).from(exams).where(eq(exams.pin, pin)).limit(1);
+    if (closed) throw status(409, EXAM_CLOSED);
+    throw status(404, PIN_NOT_FOUND);
+}
+
+const submissionColumns = {
+    id: submissions.id,
+    studentName: submissions.studentName,
+    score: submissions.score,
+    correctCount: submissions.correctCount,
+    totalQuestions: submissions.totalQuestions,
+    answers: submissions.answers,
+    submittedAt: submissions.submittedAt,
+};
+type StoredSubmission = Pick<
+    typeof submissions.$inferSelect,
+    "id" | "studentName" | "score" | "correctCount" | "totalQuestions" | "answers" | "submittedAt"
+>;
+
+/** The result a student hears. Built from the stored row so a replay returns exactly what the first call did. */
+const toSubmitResult = (row: StoredSubmission) => ({
+    submissionId: row.id,
+    studentName: row.studentName,
+    score: row.score,
+    correctCount: row.correctCount,
+    totalQuestions: row.totalQuestions,
+    answeredCount: row.answers.filter((a) => a.answer !== null).length,
+    submittedAt: row.submittedAt,
+});
+
+/** A previously stored attempt, if any. Looked up by attempt id alone so it still works after the exam was closed. */
+async function findAttempt(attemptId: string, pin: string) {
+    const [row] = await db
+        .select({ ...submissionColumns, pin: exams.pin })
+        .from(submissions)
+        .innerJoin(exams, eq(exams.id, submissions.examId))
+        .where(eq(submissions.attemptId, attemptId))
+        .limit(1);
+    if (!row) return null;
+    // The same attempt id arriving with another exam's PIN is a client bug, not a retry.
+    if (row.pin !== pin) throw status(409, ATTEMPT_CONFLICT);
+    return row;
+}
 
 export const ExamService = {
     /** PRD F-02: stores the question set and assigns a unique 4-digit PIN among active exams. */
@@ -119,12 +175,7 @@ export const ExamService = {
 
     /** PRD GET /exams/:pin: questions for the voice exam, with the answer key stripped. */
     async getByPin(pin: string) {
-        const [exam] = await db
-            .select({ id: exams.id, title: exams.title, questions: exams.questions })
-            .from(exams)
-            .where(activeExamByPin(pin))
-            .limit(1);
-        if (!exam) throw status(404, PIN_NOT_FOUND);
+        const exam = await findActiveExam(pin);
 
         return {
             id: exam.id,
@@ -134,14 +185,16 @@ export const ExamService = {
         };
     },
 
-    /** PRD POST /exams/:pin/submit: scores on the server; the answer key is never sent back. */
+    /**
+     * PRD POST /exams/:pin/submit: scores on the server; the answer key is never sent back.
+     * Idempotent per `attemptId`: a retry returns the stored result and creates nothing, even if the exam
+     * was closed after the first call. The answers of a replay are ignored; the first submission wins.
+     */
     async submit(pin: string, body: SubmitExamBody) {
-        const [exam] = await db
-            .select({ id: exams.id, questions: exams.questions })
-            .from(exams)
-            .where(activeExamByPin(pin))
-            .limit(1);
-        if (!exam) throw status(404, PIN_NOT_FOUND);
+        const stored = await findAttempt(body.attemptId, pin);
+        if (stored) return { result: toSubmitResult(stored), replayed: true };
+
+        const exam = await findActiveExam(pin);
 
         const questionIds = new Set(exam.questions.map((q) => q.id));
         const chosen = new Map<number, AnswerKey>();
@@ -163,17 +216,22 @@ export const ExamService = {
 
         const [row] = await db
             .insert(submissions)
-            .values({ examId: exam.id, studentName, answers, score, correctCount, totalQuestions })
-            .returning({ id: submissions.id, submittedAt: submissions.submittedAt });
+            .values({
+                examId: exam.id,
+                attemptId: body.attemptId,
+                studentName,
+                answers,
+                score,
+                correctCount,
+                totalQuestions,
+            })
+            .onConflictDoNothing({ target: submissions.attemptId })
+            .returning(submissionColumns);
+        if (row) return { result: toSubmitResult(row), replayed: false };
 
-        return {
-            submissionId: row.id,
-            studentName,
-            score,
-            correctCount,
-            totalQuestions,
-            answeredCount: chosen.size,
-            submittedAt: row.submittedAt,
-        };
+        // Two retries of one attempt raced; the other one stored it first.
+        const raced = await findAttempt(body.attemptId, pin);
+        if (raced) return { result: toSubmitResult(raced), replayed: true };
+        throw status(409, ATTEMPT_CONFLICT);
     },
 };

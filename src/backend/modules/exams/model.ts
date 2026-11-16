@@ -49,6 +49,11 @@ export const ExamModel = {
         isActive: t.Boolean({ description: "false = tutup ujian (PIN bisa dipakai ulang), true = buka kembali" }),
     }),
     submitBody: t.Object({
+        attemptId: t.String({
+            format: "uuid",
+            description:
+                "UUID dibuat perangkat siswa saat ujian dimulai. Kirim ulang dengan ID yang sama mengembalikan hasil yang sama, tanpa nilai ganda.",
+        }),
         studentName: NonEmptyString(100),
         answers: t.Array(
             t.Object({

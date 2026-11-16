@@ -52,6 +52,9 @@ export const submissions = pgTable(
         examId: uuid("exam_id")
             .notNull()
             .references(() => exams.id, { onDelete: "cascade" }),
+        // Created by the student device when an exam starts and sent with the answers, so a retry
+        // (lost response, offline outbox) is recognised and never stored twice.
+        attemptId: uuid("attempt_id").notNull(),
         studentName: varchar("student_name", { length: 100 }).notNull(),
         answers: jsonb("answers").$type<SubmissionAnswer[]>().notNull(),
         score: integer("score").notNull(),
@@ -60,6 +63,7 @@ export const submissions = pgTable(
         submittedAt: timestamp("submitted_at", { withTimezone: true }).defaultNow().notNull(),
     },
     (table) => [
+        uniqueIndex("submissions_attempt_id_uidx").on(table.attemptId),
         check("submissions_score_range_chk", sql`${table.score} between 0 and 100`),
         index("submissions_exam_id_submitted_at_idx").on(table.examId, table.submittedAt),
     ],

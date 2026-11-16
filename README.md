@@ -46,7 +46,7 @@ Jika PIN di atas sudah dipakai ujian aktif guru lain, seeder memakai PIN acak da
 | `GET` | `/api/exams` | Guru | Daftar ujian guru + jumlah pengumpulan & rata-rata nilai |
 | `PATCH` | `/api/exams/:id` | Guru | `{ isActive }` tutup/buka ujian. Ujian tertutup menolak jawaban dan PIN-nya bisa dipakai ulang |
 | `GET` | `/api/exams/:pin` | Publik | Soal untuk ujian suara, tanpa kunci jawaban |
-| `POST` | `/api/exams/:pin/submit` | Publik | Kirim jawaban, nilai dihitung di server |
+| `POST` | `/api/exams/:pin/submit` | Publik | Kirim jawaban + `attemptId` (UUID), nilai dihitung di server. Aman dikirim ulang: 201 pertama kali, 200 untuk `attemptId` yang sama. Ujian ditutup: 409 `EXAM_CLOSED`. PIN tidak dikenal: 404 `PIN_NOT_FOUND` |
 | `GET` | `/api/submissions` | Guru | Nilai siswa untuk ujian milik guru, `?examId=` |
 
 Semua error berbentuk `{ message }` (422 validasi juga menyertakan `errors[]`).

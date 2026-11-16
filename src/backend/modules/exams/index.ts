@@ -30,14 +30,25 @@ const examsModule = new Elysia({ prefix: "/exams", tags: ["Exams"] })
     })
     .get("/:pin", ({ params }) => ExamService.getByPin(params.pin), {
         params: M.pinParams,
-        response: { 200: M.publicExam, 404: M.error },
+        response: { 200: M.publicExam, 404: M.error, 409: M.error },
         detail: { summary: "Validate a PIN and get questions for the voice exam (no answer key)" },
     })
-    .post("/:pin/submit", async ({ params, body }) => status(201, await ExamService.submit(params.pin, body)), {
-        params: M.pinParams,
-        body: M.submitBody,
-        response: { 201: M.submitResponse, 400: M.error, 404: M.error },
-        detail: { summary: "Submit answers and get the score" },
-    });
+    .post(
+        "/:pin/submit",
+        async ({ params, body }) => {
+            const { result, replayed } = await ExamService.submit(params.pin, body);
+            return status(replayed ? 200 : 201, result);
+        },
+        {
+            params: M.pinParams,
+            body: M.submitBody,
+            response: { 200: M.submitResponse, 201: M.submitResponse, 400: M.error, 404: M.error, 409: M.error },
+            detail: {
+                summary: "Submit answers and get the score (safe to retry)",
+                description:
+                    "201 on the first call, 200 when the same `attemptId` was already stored. 409 with code EXAM_CLOSED when the exam is closed, 404 with code PIN_NOT_FOUND for an unknown PIN.",
+            },
+        },
+    );
 
 export default examsModule;

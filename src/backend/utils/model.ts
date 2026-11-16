@@ -4,8 +4,11 @@ import { type Static, type TSchema, t } from "elysia";
 export const IdParams = t.Object({ id: t.String({ format: "uuid" }) });
 export const SlugParams = t.Object({ slug: t.String() });
 
-/** Standard error body. The frontend `api()` helper shows `message` in a toast. */
-export const ErrorResponse = t.Object({ message: t.String() });
+/**
+ * Standard error body. The frontend `api()` helper shows `message` in a toast.
+ * `code` is a stable machine-readable reason (e.g. EXAM_CLOSED) for clients that must react to it.
+ */
+export const ErrorResponse = t.Object({ message: t.String(), code: t.Optional(t.String()) });
 
 /** String that must contain at least one non-whitespace character. Services trim before saving. */
 export const NonEmptyString = (maxLength: number, options: { description?: string } = {}) =>
