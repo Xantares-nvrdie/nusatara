@@ -23,7 +23,7 @@ export const app = new Elysia({ prefix: "/api" })
         }),
     )
     /* HEALTH */
-    .get("/health", () => ({ status: "ok" }), { detail: { summary: "Health check", tags: ["System"] } })
+    .get("/health", () => ({ status: "ok" }))
     /* AUTH */
     .all("/auth/*", betterAuthView, { detail: { hide: true } })
     /* FEATURE MODULES */
@@ -41,3 +41,4 @@ export const POST = app.fetch;
 export const PUT = app.fetch;
 export const PATCH = app.fetch;
 export const DELETE = app.fetch;
+export const OPTIONS = app.fetch;
