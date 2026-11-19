@@ -2,43 +2,45 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Hand, Mic, Volume2, WifiOff } from 'lucide-react'
-import { getRecognition, pageHidden, playBeep, speak, stopSpeaking } from '@/lib/speech'
+import { ArrowLeft, Hand, Mic, WifiOff } from 'lucide-react'
+import { getRecognition, playBeep, speak, stopSpeaking } from '@/lib/speech'
 import { LETTERS, type Letter } from '@/lib/types'
 import { useExamAttempt } from '@/lib/use-exam-attempt'
+import { type VoiceStopReason, useVoiceMode } from '@/lib/use-voice-mode'
+import { command, parseAnswer, parseDigits, parseName } from '@/lib/voice-commands'
 import { cn } from '@/lib/utils'
+
+type Phase = ReturnType<typeof useExamAttempt>['phase']
+
+const TAP_INSTRUCTIONS =
+  'Mode ketuk aktif. Ketuk satu kali untuk A, dua kali untuk B, tiga kali untuk C, atau empat kali untuk D. Ketuk dua jari untuk ulangi soal. Geser kiri untuk kembali, geser kanan untuk lanjut.'
+
+/** What voice mode tells the student to say on each step. Steps without a hint don't listen. */
+const VOICE_STEP_HINT: Partial<Record<Phase, string>> = {
+  name: 'Sebutkan nama Anda.',
+  pin: 'Sebutkan empat angka PIN ujian.',
+  question: 'Katakan: Jawab A, B, C, atau D. Atau: Ulangi soal.',
+  review: 'Katakan: Kirim, untuk mengirim jawaban. Atau: Periksa, untuk kembali ke soal.',
+  error: 'Katakan: Coba lagi.',
+}
+
+const VOICE_STOP_MESSAGE: Record<VoiceStopReason, string> = {
+  unsupported:
+    'Pengenalan suara tidak berjalan di browser ini. Untuk mode suara, buka halaman ini di Google Chrome dan pastikan mikrofon menyala.',
+  blocked: 'Izin mikrofon ditolak. Izinkan mikrofon untuk situs ini di pengaturan browser, lalu tekan V lagi.',
+  'no-mic': 'Mikrofon tidak ditemukan. Sambungkan mikrofon, lalu tekan V lagi.',
+  offline: 'Mode suara butuh koneksi internet.',
+}
 
 const hcBtn =
   'min-h-16 rounded-2xl border-4 border-[#FFE600] px-6 text-xl font-black text-[#FFE600] transition-colors hover:bg-[#FFE600] hover:text-black focus-visible:bg-[#FFE600] focus-visible:text-black focus-visible:outline-[4px] focus-visible:outline-offset-4 focus-visible:outline-white disabled:opacity-50'
 const hcInput =
   'min-h-16 w-full rounded-2xl border-4 border-[#FFE600] bg-black px-5 text-2xl font-bold text-white placeholder:text-white/50 focus-visible:outline-[4px] focus-visible:outline-offset-4 focus-visible:outline-white'
 
-const NUM_WORDS: Record<string, string> = {
-  nol: '0',
-  satu: '1',
-  dua: '2',
-  tiga: '3',
-  empat: '4',
-  lima: '5',
-  enam: '6',
-  tujuh: '7',
-  delapan: '8',
-  sembilan: '9',
-}
-
-function parseDigits(t: string) {
-  return t
-    .toLowerCase()
-    .split(/\s+/)
-    .map((w) => NUM_WORDS[w] ?? w.replace(/\D/g, ''))
-    .join('')
-}
-
 export function BlindExam() {
   const x = useExamAttempt('tunanetra')
   const [nameInput, setNameInput] = useState('')
   const [pinInput, setPinInput] = useState('')
-  const [listening, setListening] = useState(false)
   const [hint, setHint] = useState('')
   const [tapMode, setTapMode] = useState(false)
 
@@ -55,7 +57,10 @@ export function BlindExam() {
   const submitTapTimerRef = useRef<NodeJS.Timeout | null>(null)
   const touchStartRef = useRef<{ x: number; y: number; time: number; touches: number } | null>(null)
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const recognitionRef = useRef<ReturnType<typeof getRecognition>>(null)
+  /** Mirrors `voice.active` for the spoken prompts, which are built in an effect declared before `voice`. */
+  const voiceOnRef = useRef(false)
+  /** True between saving an answer and moving to the next question. */
+  const advancingRef = useRef(false)
 
   const q = x.exam?.questions[x.index]
   const total = x.exam?.questions.length ?? 0
@@ -99,16 +104,22 @@ export function BlindExam() {
   // Phase change voice prompts
   useEffect(() => {
     headingRef.current?.focus()
-    const prompts: Partial<Record<typeof x.phase, string>> = {
-      name: 'Ujian suara tunanetra. Ketik nama Anda lalu tekan Enter, atau tekan tombol V untuk bicara.',
-      pin: `Halo ${x.name}. Masukkan PIN ujian empat angka, lalu tekan Enter.`,
+    // In voice mode the prompts say what to speak; otherwise which keys to press.
+    const voiceOn = voiceOnRef.current
+    const prompts: Partial<Record<Phase, string>> = {
+      name: voiceOn
+        ? `Ujian suara tunanetra. ${VOICE_STEP_HINT.name}`
+        : 'Ujian suara tunanetra. Tekan V sekali untuk mode suara, lalu sebutkan nama Anda. Atau ketik nama lalu tekan Enter.',
+      pin: `Halo ${x.name}. ${voiceOn ? VOICE_STEP_HINT.pin : 'Masukkan PIN ujian empat angka, lalu tekan Enter.'}`,
       loading: 'Memuat ujian.',
-      review: `Anda menjawab ${answeredCount} dari ${total} soal. Tekan Enter untuk mengirim, atau tekan P untuk periksa kembali.`,
+      review: `Anda menjawab ${answeredCount} dari ${total} soal. ${
+        voiceOn ? VOICE_STEP_HINT.review : 'Tekan Enter untuk mengirim, atau tekan P untuk periksa kembali.'
+      }`,
       submitting: 'Mengirim jawaban ke server.',
       result: x.result
         ? `Jawaban terkirim. Nilai Anda ${x.result.score}. Benar ${x.result.correctCount} dari ${x.result.totalQuestions} soal.`
         : '',
-      error: x.error ? `${x.error.message} Tekan Enter untuk mencoba lagi.` : '',
+      error: x.error ? `${x.error.message} ${voiceOn ? VOICE_STEP_HINT.error : 'Tekan Enter untuk mencoba lagi.'}` : '',
     }
     if (x.phase === 'question') {
       readQuestion()
@@ -118,23 +129,13 @@ export function BlindExam() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [x.phase, x.index])
 
-  useEffect(
-    () => () => {
-      stopSpeaking()
-      recognitionRef.current?.abort()
-    },
-    [],
-  )
+  useEffect(() => () => stopSpeaking(), [])
 
-  // Leaving the tab silences the exam (SpeechGuard cancels speech) and stops the microphone.
+  // Leaving the tab silences the exam (SpeechGuard cancels speech; voice mode pauses the microphone).
   // Coming back reads the current question again so the student knows where they are.
   useEffect(() => {
     function onVisibility() {
-      if (document.visibilityState === 'hidden') {
-        recognitionRef.current?.abort()
-      } else if (x.phase === 'question') {
-        readQuestion()
-      }
+      if (document.visibilityState === 'visible' && x.phase === 'question') readQuestion()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
@@ -169,7 +170,10 @@ export function BlindExam() {
       setPendingLetter(null)
       speak(`Jawaban ${l} tersimpan, lanjut ke soal berikutnya.`)
       if (autoAdvance) {
+        // Voice mode must not listen in this gap, or the next answer would land on this question.
+        advancingRef.current = true
         setTimeout(() => {
+          advancingRef.current = false
           next()
         }, 1200)
       }
@@ -177,100 +181,94 @@ export function BlindExam() {
     [q, x, next],
   )
 
-  // Toggle Tap Fallback Mode (PRD F-04b)
-  const activateTapMode = useCallback(() => {
+  // Toggle Tap Fallback Mode (PRD F-04b). `reason` explains why voice mode had to give up first.
+  const activateTapMode = useCallback((reason?: string) => {
     setTapMode(true)
     playBeep()
-    setHint('Mode ketuk aktif (F-04b)')
-    speak(
-      'Mode ketuk aktif. Ketuk satu kali untuk A, dua kali untuk B, tiga kali untuk C, atau empat kali untuk D. Ketuk dua jari untuk ulangi soal. Geser kiri untuk kembali, geser kanan untuk lanjut.',
-    )
+    setHint(reason ? `${reason} Mode ketuk aktif.` : 'Mode ketuk aktif (F-04b)')
+    speak(reason ? `${reason} ${TAP_INSTRUCTIONS}` : TAP_INSTRUCTIONS)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Web Speech Recognition for Hands-Free Voice Exam (PRD F-04)
-  function listen() {
-    const rec = getRecognition()
-    if (!rec) {
-      setHint('Pengenalan suara tidak didukung di browser ini. Mode ketuk diaktifkan.')
-      activateTapMode()
+  // What the student said, handled for the step they are on right now (PRD F-04).
+  function handleTranscript(text: string) {
+    setHint(`Terdengar: “${text}”`)
+
+    if (x.phase === 'name') {
+      const name = parseName(text)
+      setNameInput(name)
+      if (!x.confirmName(name)) speak('Nama belum terdengar. Sebutkan nama Anda.')
+    } else if (x.phase === 'pin') {
+      const d = parseDigits(text)
+      setPinInput(d)
+      if (!/^\d{4}$/.test(d)) {
+        speak(d ? `Terdengar ${d.split('').join(' ')}. PIN harus empat angka. Sebutkan lagi.` : 'PIN belum terdengar. Sebutkan empat angka PIN.')
+        return
+      }
+      x.loadPin(d)
+    } else if (x.phase === 'question' && q) {
+      // An explicit "Jawab B" wins over everything else in the sentence.
+      const explicit = /\b(jawab|jawaban|jawabannya|pilih|pilihan|opsi)\b/i.test(text) ? parseAnswer(text, q.options) : null
+      if (explicit) return choose(explicit, true)
+      // The mic is always on in voice mode, so a stray "selesai" only opens the summary; "Kirim" there submits.
+      if (command.finish(text)) return x.setPhase('review')
+      if (command.repeat(text)) return readQuestion()
+      if (command.next(text)) return next()
+      if (command.prev(text)) return x.index === 0 ? speak('Ini soal pertama.') : prev()
+      const answer = parseAnswer(text, q.options)
+      if (answer) return choose(answer, true)
+      speak('Perintah tidak dikenali. Katakan: Jawab A, B, C, atau D. Atau: Ulangi soal.')
+    } else if (x.phase === 'review') {
+      if (command.review(text)) return prev()
+      if (command.send(text)) return x.submit()
+      speak('Katakan: Kirim, atau: Periksa.')
+    } else if (x.phase === 'error') {
+      if (command.retry(text)) return x.retry()
+      speak('Katakan: Coba lagi.')
+    }
+  }
+
+  // Hands-free voice mode: one press (button or V) keeps it listening after every spoken prompt.
+  const voice = useVoiceMode({
+    canListen: () => !tapMode && !advancingRef.current && Boolean(VOICE_STEP_HINT[x.phase]),
+    onTranscript: handleTranscript,
+    onStop: (reason) => activateTapMode(VOICE_STOP_MESSAGE[reason]),
+  })
+
+  voiceOnRef.current = voice.active
+
+  function toggleVoiceMode() {
+    if (voice.active) {
+      voice.stop()
+      speak('Mode suara dimatikan. Tekan V untuk menyalakannya lagi.')
       return
     }
-    stopSpeaking()
-    recognitionRef.current?.abort()
-    recognitionRef.current = rec
-    setListening(true)
-
-    rec.onresult = (e) => {
-      const text = e.results[0][0].transcript.trim()
-      setHint(`Terdengar: “${text}”`)
-
-      if (x.phase === 'name') {
-        setNameInput(text)
-        x.confirmName(text)
-      } else if (x.phase === 'pin') {
-        const d = parseDigits(text)
-        setPinInput(d)
-        if (!x.loadPin(d)) speak(`Terdengar ${d.split('').join(' ')}. PIN harus empat angka.`)
-      } else if (x.phase === 'question') {
-        const lower = text.toLowerCase()
-
-        // 1. Trigger "Selesai ujian" (PRD F-04)
-        if (/selesai\s*(ujian)?|akhiri\s*(ujian)?/i.test(lower)) {
-          speak('Mengakhiri ujian dan mengirim jawaban.')
-          x.submit()
-          return
-        }
-
-        // 2. Trigger "Ulangi soal" (PRD F-04)
-        if (/ulang(i)?\s*(soal)?/i.test(lower)) {
-          readQuestion()
-          return
-        }
-
-        // 3. Trigger "Jawab, [A/B/C/D]" (PRD F-04)
-        // Validasi kata kunci "jawab" / "jawaban" / "pilih"
-        const jawabMatch = lower.match(/(?:jawab(?:an)?|pilih)\s*,?\s*([a-d])\b/i)
-        if (jawabMatch) {
-          const letter = jawabMatch[1].toUpperCase() as Letter
-          choose(letter, true)
-          return
-        }
-
-        // Fallback pemicu huruf langsung jika pengucapan jelas
-        const letterDirect = lower.match(/\b([a-d])\b/i)
-        if (letterDirect) {
-          const letter = letterDirect[1].toUpperCase() as Letter
-          choose(letter, true)
-          return
-        }
-
-        // Navigasi suara tambahan
-        if (/lanjut|berikut/i.test(lower)) {
-          next()
-        } else if (/kembali|sebelum/i.test(lower)) {
-          prev()
-        } else {
-          speak('Perintah tidak dikenali. Katakan: Ulangi soal, atau: Jawab, A, B, C, atau D.')
-        }
-      }
+    if (!getRecognition()) {
+      activateTapMode(VOICE_STOP_MESSAGE.unsupported)
+      return
     }
-
-    rec.onerror = (e) => {
-      // We abort the mic ourselves when the tab is hidden or a new listen starts; that isn't a failure.
-      if (e?.error === 'aborted' || pageHidden()) return
-      setHint('Suara tidak terdengar atau koneksi terputus. Mengaktifkan mode ketuk cadangan.')
-      // Fallback otomatis saat Web Speech Recognition gagal (PRD F-04b)
-      if (!tapMode) {
-        activateTapMode()
-      }
-    }
-
-    rec.onend = () => {
-      setListening(false)
-      if (recognitionRef.current === rec) recognitionRef.current = null
-    }
-    rec.start()
+    setTapMode(false)
+    // Listening starts after this sentence (and after every later prompt), with a beep each time.
+    speak(`Mode suara aktif. Bicara setelah bunyi bip. ${VOICE_STEP_HINT[x.phase] ?? ''}`)
+    voice.start()
   }
+
+  // Tap mode and voice mode exclude each other: the mic would hear the taps' spoken feedback.
+  function toggleTapMode() {
+    if (tapMode) {
+      setTapMode(false)
+      speak('Mode ketuk dimatikan. Tekan V untuk mode suara.')
+    } else {
+      voice.stop()
+      activateTapMode()
+    }
+  }
+
+  // The keyboard and long-press handlers are registered once; read the latest toggles through refs.
+  const toggleVoiceRef = useRef(toggleVoiceMode)
+  toggleVoiceRef.current = toggleVoiceMode
+  const toggleTapRef = useRef(toggleTapMode)
+  toggleTapRef.current = toggleTapMode
 
   // Keyboard accessibility fallback (PRD F-04: A, B, C, D, Spasi untuk ulangi suara)
   useEffect(() => {
@@ -279,21 +277,16 @@ export function BlindExam() {
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return
       const k = e.key.toUpperCase()
 
-      // Toggle voice listening
+      // V turns hands-free voice mode on or off
       if (k === 'V') {
         e.preventDefault()
-        return listen()
+        return toggleVoiceRef.current()
       }
 
       // Toggle Tap Mode manually with T (PRD F-04b)
       if (k === 'T') {
         e.preventDefault()
-        if (!tapMode) activateTapMode()
-        else {
-          setTapMode(false)
-          speak('Mode suara aktif kembali.')
-        }
-        return
+        return toggleTapRef.current()
       }
 
       if (x.phase === 'question') {
@@ -325,7 +318,7 @@ export function BlindExam() {
 
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [x, q, choose, next, prev, readQuestion, tapMode, activateTapMode])
+  }, [x, q, choose, next, prev, readQuestion])
 
   /* ------------------------------------------------------------------ */
   /* F-04b Mode Cadangan Ketuk & Geser (Tap & Gesture Fallback) Engine  */
@@ -342,7 +335,7 @@ export function BlindExam() {
     if (!tapMode && touches === 1) {
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current)
       longPressTimerRef.current = setTimeout(() => {
-        activateTapMode()
+        toggleTapRef.current()
       }, 2000)
     }
   }
@@ -541,14 +534,8 @@ export function BlindExam() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => {
-              if (tapMode) {
-                setTapMode(false)
-                speak('Mode suara aktif.')
-              } else {
-                activateTapMode()
-              }
-            }}
+            onClick={toggleTapMode}
+            aria-pressed={tapMode}
             className={cn(
               hcBtn,
               'flex items-center gap-2 text-base md:text-lg min-h-12 px-4',
@@ -562,16 +549,17 @@ export function BlindExam() {
           </button>
           <button
             type="button"
-            onClick={listen}
+            onClick={toggleVoiceMode}
             className={cn(
               hcBtn,
               'flex items-center gap-2 text-base md:text-lg min-h-12 px-4',
-              listening && 'bg-[#FFE600] text-black',
+              voice.active && 'bg-[#FFE600] text-black',
             )}
-            aria-pressed={listening}
+            aria-pressed={voice.active}
+            title="Tekan V untuk menyalakan atau mematikan mode suara"
           >
-            <Mic className="size-5" aria-hidden="true" />
-            <span>{listening ? 'Mendengarkan…' : 'Bicara'}</span>
+            <Mic className={cn('size-5', voice.listening && 'animate-pulse')} aria-hidden="true" />
+            <span>{voice.listening ? 'Mendengarkan…' : voice.active ? 'Mode Suara Aktif' : 'Mode Suara'}</span>
             <span className="hidden md:inline">(V)</span>
           </button>
         </div>
@@ -634,11 +622,11 @@ export function BlindExam() {
               </button>
               <button
                 type="button"
-                onClick={listen}
-                className={cn(hcBtn, 'flex items-center justify-center gap-2', listening && 'bg-white text-black')}
+                onClick={() => !voice.active && toggleVoiceMode()}
+                className={cn(hcBtn, 'flex items-center justify-center gap-2', voice.active && 'bg-white text-black')}
               >
                 <Mic className="size-6 text-current" aria-hidden="true" />
-                <span>{listening ? 'Mendengarkan…' : 'Bicara Nama'}</span>
+                <span>{voice.listening ? 'Mendengarkan…' : voice.active ? 'Mode suara aktif' : 'Bicara Nama'}</span>
               </button>
             </div>
           </form>
@@ -675,11 +663,11 @@ export function BlindExam() {
               </button>
               <button
                 type="button"
-                onClick={listen}
-                className={cn(hcBtn, 'flex items-center justify-center gap-2', listening && 'bg-white text-black')}
+                onClick={() => !voice.active && toggleVoiceMode()}
+                className={cn(hcBtn, 'flex items-center justify-center gap-2', voice.active && 'bg-white text-black')}
               >
                 <Mic className="size-6 text-current" aria-hidden="true" />
-                <span>{listening ? 'Mendengarkan…' : 'Sebutkan PIN'}</span>
+                <span>{voice.listening ? 'Mendengarkan…' : voice.active ? 'Mode suara aktif' : 'Sebutkan PIN'}</span>
               </button>
             </div>
           </form>

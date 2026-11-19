@@ -47,7 +47,9 @@ type RecognitionLike = {
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
   onerror: ((e: { error: string }) => void) | null
   onend: (() => void) | null
+  onspeechstart?: (() => void) | null
 }
+export type Recognition = RecognitionLike
 
 export function getRecognition(): RecognitionLike | null {
   if (typeof window === 'undefined') return null
@@ -72,6 +74,8 @@ export function playBeep() {
     osc.frequency.value = 880
     gain.gain.value = 0.08
     osc.connect(gain).connect(ctx.destination)
+    // Voice mode beeps before every listening turn; close each context so they don't pile up.
+    osc.onended = () => void ctx.close().catch(() => {})
     osc.start()
     osc.stop(ctx.currentTime + 0.12)
   } catch {
