@@ -408,6 +408,25 @@ export default function LatihanSuaraPage() {
               })}
             </div>
 
+            {/* Written feedback for sighted helpers and low-vision students. Not aria-live: the same
+                text is already spoken by the page's own voice, so a screen reader would read it twice. */}
+            {isAnswered && (
+              <div
+                className={`rounded-2xl border-2 p-4 text-sm ${
+                  selectedOpt === currentQ.answerIndex
+                    ? 'border-emerald-600 bg-emerald-50 text-emerald-950'
+                    : 'border-red-500 bg-red-50 text-red-950'
+                }`}
+              >
+                <p className="font-black">
+                  {selectedOpt === currentQ.answerIndex
+                    ? 'Jawaban benar!'
+                    : `Belum tepat. Jawaban yang benar: ${LETTERS[currentQ.answerIndex]}. ${currentQ.options[currentQ.answerIndex]}`}
+                </p>
+                <p className="mt-1 font-medium">{currentQ.explanation}</p>
+              </div>
+            )}
+
             {/* Voice Control & Feedback */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-neutral-100 pt-5">
               <button
