@@ -293,14 +293,59 @@ export async function createModule(input: Omit<LearningModule, 'id' | 'createdAt
   }
 }
 
-/** Full module (audio script + visual summary). Uses the cached copy when it's already complete. */
+/** Saves a teacher's edits to their own module (the server answers 404 for anyone else's). */
+export async function updateModule(
+  id: string,
+  input: Pick<LearningModule, 'title' | 'rawContent' | 'blindAudioScript' | 'deafVisualSummary'>,
+) {
+  try {
+    const res = await api<any>(`/modules/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        title: input.title,
+        rawContent: input.rawContent,
+        blindAudioScript: input.blindAudioScript,
+        deafVisualSummary: input.deafVisualSummary,
+      }),
+    })
+    const mod = normalizeModule(res)
+    freshModuleIds.add(id)
+    setState((s) => ({ ...s, modules: s.modules.map((m) => (m.id === id ? mod : m)) }))
+    return mod
+  } catch (err) {
+    throw networkError(err)
+  }
+}
+
+/**
+ * Modules fetched (or saved) since this page load. A cached copy from an earlier visit may be older than a
+ * teacher's edit, so it is refreshed in the background once per page load.
+ */
+const freshModuleIds = new Set<string>()
+
+async function loadFullModule(id: string) {
+  const full = normalizeModule(await api<any>(`/modules/${id}`))
+  freshModuleIds.add(id)
+  setState((s) => ({ ...s, modules: [full, ...s.modules.filter((m) => m.id !== id)] }))
+  return full
+}
+
+/**
+ * Full module (audio script + visual summary). Answers from the cache when it has the full module, so pages open
+ * instantly and offline; an old cached copy is then refreshed in the background, and the update shows up in the
+ * store (the next time the module opens, at the latest).
+ */
 export async function fetchModuleById(id: string): Promise<LearningModule | null> {
   const cached = getSnapshot().modules.find((m) => m.id === id)
-  if (isFull(cached)) return cached!
+  if (isFull(cached)) {
+    if (!freshModuleIds.has(id)) {
+      freshModuleIds.add(id)
+      loadFullModule(id).catch(() => freshModuleIds.delete(id))
+    }
+    return cached!
+  }
   try {
-    const full = normalizeModule(await api<any>(`/modules/${id}`))
-    setState((s) => ({ ...s, modules: [full, ...s.modules.filter((m) => m.id !== id)] }))
-    return full
+    return await loadFullModule(id)
   } catch (err: any) {
     if (err?.status === 404 || err?.status === 422) return null
     throw networkError(err)

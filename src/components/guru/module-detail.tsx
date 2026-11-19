@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, FilePlus2, BookX } from 'lucide-react'
-import { EmptyState, Skeleton, btnLime } from '@/components/site/form'
+import { ArrowLeft, FilePlus2, BookX, Pencil } from 'lucide-react'
+import { Alert, EmptyState, Skeleton, btnLime, btnSecondary } from '@/components/site/form'
 import { ScriptPlayer } from '@/components/module/script-player'
 import { VisualSummaryView } from '@/components/module/visual-summary'
 import { formatDate } from '@/lib/format'
@@ -18,6 +19,10 @@ const TABS = [
 
 export function ModuleDetail({ id }: { id: string }) {
   const mod = useStore((s) => s.modules.find((m) => m.id === id))
+  // Only the author can edit (the API also checks); other teachers' modules stay read-only.
+  const isMine = useStore((s) => s.myModuleIds.includes(id))
+  // Set by the editor after a successful save.
+  const justSaved = useSearchParams().get('disimpan') === '1'
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('visual')
   const [loading, setLoading] = useState(!mod || !mod.blindAudioScript)
   const [failed, setFailed] = useState(false)
@@ -84,10 +89,23 @@ export function ModuleDetail({ id }: { id: string }) {
             {mod.teacherName} · {formatDate(mod.createdAt)}
           </p>
         </div>
-        <Link href={`/guru/ujian/baru?modul=${mod.id}`} className={btnLime}>
-          <FilePlus2 className="size-4" aria-hidden="true" /> Buat ujian dari modul
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          {isMine && (
+            <Link href={`/guru/modul/${mod.id}/ubah`} className={btnSecondary}>
+              <Pencil className="size-4" aria-hidden="true" /> Edit modul
+            </Link>
+          )}
+          <Link href={`/guru/ujian/baru?modul=${mod.id}`} className={btnLime}>
+            <FilePlus2 className="size-4" aria-hidden="true" /> Buat ujian dari modul
+          </Link>
+        </div>
       </div>
+
+      {justSaved && (
+        <Alert tone="success" title="Perubahan modul tersimpan." className="mb-6">
+          Siswa melihat versi baru saat membuka modul ini. Ujian yang sudah dibuat dari modul ini tidak ikut berubah.
+        </Alert>
+      )}
 
       <div role="tablist" aria-label="Versi materi" className="mb-6 inline-flex flex-wrap gap-1 rounded-full border border-border bg-white p-1">
         {TABS.map((t, i) => (

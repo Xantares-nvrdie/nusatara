@@ -29,6 +29,14 @@ const ModuleListItem = t.Object({
     createdAt: t.Date(),
 });
 
+/** What a teacher saves or edits. */
+const ModuleContent = t.Object({
+    title: NonEmptyString(200),
+    rawContent: NonEmptyString(MAX_CONTENT_CHARS),
+    blindAudioScript: NonEmptyString(MAX_AUDIO_SCRIPT_CHARS),
+    deafVisualSummary: DeafVisualSummary,
+});
+
 const ModuleDetail = t.Object({
     id: t.String(),
     title: t.String(),
@@ -65,12 +73,9 @@ export const LearningModuleModel = {
         deafVisualSummary: DeafVisualSummary,
         questions: t.Array(ExamQuestionInput),
     }),
-    createBody: t.Object({
-        title: NonEmptyString(200),
-        rawContent: NonEmptyString(MAX_CONTENT_CHARS),
-        blindAudioScript: NonEmptyString(MAX_AUDIO_SCRIPT_CHARS),
-        deafVisualSummary: DeafVisualSummary,
-    }),
+    createBody: ModuleContent,
+    /** Editing replaces the whole content; the editor always sends every field. */
+    updateBody: ModuleContent,
     listResponse: Paginated(ModuleListItem),
     conceptMapResponse: t.Object({
         items: t.Array(
@@ -98,4 +103,5 @@ export const LearningModuleModel = {
 export type ConvertBody = typeof LearningModuleModel.convertBody.static;
 export type ConvertResult = typeof LearningModuleModel.convertResponse.static;
 export type CreateModuleBody = typeof LearningModuleModel.createBody.static;
+export type UpdateModuleBody = typeof LearningModuleModel.updateBody.static;
 export type ListModulesQuery = typeof LearningModuleModel.listQuery.static;

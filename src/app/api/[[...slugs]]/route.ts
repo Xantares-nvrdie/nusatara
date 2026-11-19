@@ -36,10 +36,10 @@ export const app = new Elysia({ prefix: "/api" })
 
 export type App = typeof app;
 
-// A Gemini conversion takes ~30-40 s and may fall back to a second model when the first is overloaded.
-// The Gemini client gives up after 110 s so it can still answer with a clean error before this limit.
-// (Vercel Fluid compute allows up to 300 s on every plan.)
-export const maxDuration = 120;
+// A conversion takes ~30-50 s and may fall back from the AI gateway (SumoPod) to Google's Gemini models.
+// generateStructured (backend/utils/gemini.ts) gives up after at most 200 s, so it can still answer with a clean
+// error before this limit. (Vercel Fluid compute allows up to 300 s on every plan.)
+export const maxDuration = 210;
 export const GET = app.fetch;
 export const POST = app.fetch;
 export const PUT = app.fetch;

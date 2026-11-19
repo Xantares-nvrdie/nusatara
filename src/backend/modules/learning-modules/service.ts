@@ -16,6 +16,7 @@ import {
     type ListModulesQuery,
     MAX_CONTENT_CHARS,
     MAX_PDF_PAGES,
+    type UpdateModuleBody,
 } from "./model";
 
 /** PDFs with less extractable text than this are treated as scanned images. */
@@ -42,6 +43,23 @@ const detailColumns = {
     blindAudioScript: learningModules.blindAudioScript,
     deafVisualSummary: learningModules.deafVisualSummary,
 };
+
+const moduleValues = (body: CreateModuleBody | UpdateModuleBody) => ({
+    title: body.title.trim(),
+    rawContent: body.rawContent.trim(),
+    blindAudioScript: body.blindAudioScript.trim(),
+    deafVisualSummary: body.deafVisualSummary,
+});
+
+const toDetail = (row: typeof learningModules.$inferSelect, teacherName: string) => ({
+    id: row.id,
+    title: row.title,
+    teacherName,
+    rawContent: row.rawContent,
+    blindAudioScript: row.blindAudioScript,
+    deafVisualSummary: row.deafVisualSummary,
+    createdAt: row.createdAt,
+});
 
 const normalizeText = (text: string) =>
     text
@@ -138,23 +156,23 @@ export const LearningModuleService = {
     async create(teacher: { id: string; name: string }, body: CreateModuleBody) {
         const [row] = await db
             .insert(learningModules)
-            .values({
-                teacherId: teacher.id,
-                title: body.title.trim(),
-                rawContent: body.rawContent.trim(),
-                blindAudioScript: body.blindAudioScript.trim(),
-                deafVisualSummary: body.deafVisualSummary,
-            })
+            .values({ teacherId: teacher.id, ...moduleValues(body) })
             .returning();
-        return {
-            id: row.id,
-            title: row.title,
-            teacherName: teacher.name,
-            rawContent: row.rawContent,
-            blindAudioScript: row.blindAudioScript,
-            deafVisualSummary: row.deafVisualSummary,
-            createdAt: row.createdAt,
-        };
+        return toDetail(row, teacher.name);
+    },
+
+    /**
+     * Saves the teacher's edits. Only the owner can edit; anyone else gets 404, like a missing module.
+     * Exams made from this module keep their own copy of the questions, so they don't change.
+     */
+    async update(teacher: { id: string; name: string }, id: string, body: UpdateModuleBody) {
+        const [row] = await db
+            .update(learningModules)
+            .set(moduleValues(body))
+            .where(and(eq(learningModules.id, id), eq(learningModules.teacherId, teacher.id)))
+            .returning();
+        if (!row) throw status(404, { message: "Modul tidak ditemukan." });
+        return toDetail(row, teacher.name);
     },
 
     /** Lightweight list (no content bodies) to keep payloads small on low-bandwidth connections. */

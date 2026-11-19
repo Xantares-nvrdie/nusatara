@@ -59,6 +59,17 @@ const learningModulesModule = new Elysia({ prefix: "/modules", tags: ["Modules"]
         params: M.params,
         response: { 200: M.detail, 404: M.error },
         detail: { summary: "Get module content (public)" },
+    })
+    .patch("/:id", ({ user, params, body }) => LearningModuleService.update(user, params.id, body), {
+        auth: true,
+        params: M.params,
+        body: M.updateBody,
+        response: { 200: M.detail, 404: M.error },
+        detail: {
+            summary: "Edit a saved module (owner only)",
+            description:
+                "Replaces title, rawContent, blindAudioScript and deafVisualSummary. 404 when the module doesn't exist or belongs to another teacher. Exams made from the module are not changed.",
+        },
     });
 
 export default learningModulesModule;

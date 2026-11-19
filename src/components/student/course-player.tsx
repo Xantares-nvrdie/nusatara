@@ -56,8 +56,9 @@ export function CoursePlayer({ id }: { id: string }) {
 
   // Results of an older request (other id or before a retry) don't count.
   const current = result?.key === requestKey ? result : null
-  // Keep the fetched module even if a later list sync drops it from the store.
-  const mod = current?.status === 'ready' ? current.module : cached?.deafVisualSummary ? cached : undefined
+  // The store copy first: it picks up a teacher's edit when an old cached copy is refreshed in the background.
+  // Keep the fetched module if a later list sync drops it from the store.
+  const mod = cached?.deafVisualSummary ? cached : current?.status === 'ready' ? current.module : undefined
 
   if (!hydrated) return <PlayerSkeleton />
   if (mod) return <PlayerView key={mod.id} mod={mod} />
