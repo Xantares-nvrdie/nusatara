@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import {
   Award,
   BookOpen,
@@ -10,6 +10,8 @@ import {
   Headphones,
   Pause,
   Play,
+  SkipBack,
+  SkipForward,
   Sparkles,
   Square,
   Subtitles,
@@ -19,19 +21,34 @@ import { btnPrimary, btnSecondary } from '@/components/site/form'
 import { cn } from '@/lib/utils'
 import type { VisualSummary } from '@/lib/types'
 import { VisualSummaryView } from '@/components/module/visual-summary'
+import { splitScript } from '@/lib/audio-script'
+import { pageHidden, speak, stopSpeaking, ttsSupported } from '@/lib/speech'
+
+/** Lets a page (e.g. the lesson list) move the narration to another part of the script. */
+export type ScriptPlayerHandle = {
+  /** Reads the script from the start of part `index` (0-based paragraph). */
+  playPart: (index: number) => void
+}
 
 interface ScriptPlayerProps {
   script: string
   moduleId?: string
   moduleTitle?: string
   visualData?: VisualSummary
+  /** Called with the 0-based part (paragraph) that is being read or was last read. */
+  onPartChange?: (index: number) => void
+  ref?: React.Ref<ScriptPlayerHandle>
 }
+
+const partElementId = (index: number) => `naskah-bagian-${index + 1}`
 
 export function ScriptPlayer({
   script,
   moduleId,
   moduleTitle = 'Materi Pembelajaran',
   visualData,
+  onPartChange,
+  ref,
 }: ScriptPlayerProps) {
   const [state, setState] = useState<'idle' | 'playing' | 'paused'>('idle')
   const [supported, setSupported] = useState(true)
@@ -43,112 +60,134 @@ export function ScriptPlayer({
   // Font size multiplier for deaf / visually focused reading: 'sm' | 'base' | 'lg'
   const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg'>('base')
 
-  // Active sentence index for live visual captioning
-  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number>(0)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  /** Sentence being read (or where reading paused). */
+  const [current, setCurrent] = useState(0)
+  /** Bumped whenever reading stops or jumps, so the end event of an older sentence doesn't continue reading. */
+  const runRef = useRef(0)
+  const rateRef = useRef(speechRate)
+  /** Part to scroll into view after the next render (set by a jump, not by normal reading). */
+  const scrollToPartRef = useRef<number | null>(null)
 
-  // Parse script into distinct sentences/segments for visual tracking
-  const sentences = useMemo(() => {
-    return script
-      .split(/(?<=[.!?])\s+|\n\n+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-  }, [script])
+  const { parts, sentences } = useMemo(() => splitScript(script), [script])
+  const currentPart = sentences[current]?.part ?? 0
+
+  /** Reads one sentence after another, starting at `index`, until the end, a pause, or a jump. */
+  function speakFrom(index: number, rate = rateRef.current) {
+    const run = ++runRef.current
+    if (!ttsSupported() || index >= sentences.length) return
+    setCurrent(index)
+    // A background tab stays silent (SpeechGuard); keep the place so Lanjutkan starts here.
+    if (pageHidden()) {
+      setState('paused')
+      return
+    }
+    setState('playing')
+    speak(sentences[index].text, {
+      rate,
+      onEnd: () => {
+        if (run !== runRef.current) return
+        if (index + 1 < sentences.length) speakFrom(index + 1)
+        else {
+          runRef.current++
+          setState('idle')
+        }
+      },
+    })
+  }
+
+  function play() {
+    speakFrom(state === 'paused' ? current : 0)
+  }
+
+  function pause() {
+    runRef.current++
+    stopSpeaking()
+    setState('paused')
+  }
+
+  function stop() {
+    runRef.current++
+    stopSpeaking()
+    setState('idle')
+    setCurrent(0)
+  }
+
+  function changeRate(newRate: 0.8 | 1.0 | 1.2) {
+    setSpeechRate(newRate)
+    rateRef.current = newRate
+    if (state === 'playing') speakFrom(current, newRate)
+  }
+
+  function playPart(index: number) {
+    const part = parts[Math.min(Math.max(index, 0), parts.length - 1)]
+    if (!part) return
+    setViewMode('audio-text')
+    scrollToPartRef.current = sentences[part.first]?.part ?? null
+    speakFrom(part.first)
+  }
+
+  useImperativeHandle(ref, () => ({ playPart }))
 
   useEffect(() => {
-    setSupported(typeof window !== 'undefined' && 'speechSynthesis' in window)
+    setSupported(ttsSupported())
     return () => {
-      window.speechSynthesis?.cancel()
-      if (timerRef.current) clearInterval(timerRef.current)
+      runRef.current++
+      stopSpeaking()
     }
   }, [])
 
-  // SpeechGuard cancels speech when the tab is hidden; reset the controls so they don't still say "Jeda".
+  // A new script (e.g. a teacher's edit arrived) starts over from the top.
+  useEffect(() => {
+    runRef.current++
+    stopSpeaking()
+    setState('idle')
+    setCurrent(0)
+  }, [script])
+
+  // SpeechGuard cancels speech when the tab is hidden; keep the place so the student can continue later.
   useEffect(() => {
     function onVisibility() {
-      if (document.visibilityState === 'hidden') stop()
+      if (document.visibilityState !== 'hidden') return
+      runRef.current++
+      setState((s) => (s === 'playing' ? 'paused' : s))
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [])
 
+  // The lesson list follows the part being read.
+  const onPartChangeRef = useRef(onPartChange)
+  onPartChangeRef.current = onPartChange
+  useEffect(() => {
+    onPartChangeRef.current?.(currentPart)
+  }, [currentPart])
+
+  // After a jump, bring that paragraph into view.
+  useEffect(() => {
+    const target = scrollToPartRef.current
+    if (target === null || viewMode !== 'audio-text') return
+    scrollToPartRef.current = null
+    document.getElementById(partElementId(target))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+
+  // Space plays or pauses, unless a control or text field has focus (those keep their own Space behaviour).
+  const toggleRef = useRef(() => {})
+  toggleRef.current = () => (state === 'playing' ? pause() : play())
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return
+      const el = e.target as HTMLElement | null
+      if (el?.closest('input, textarea, select, button, a, [contenteditable="true"]')) return
       if (e.code === 'Space') {
         e.preventDefault()
-        if (state === 'playing') pause()
-        else play()
+        toggleRef.current()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [state, speechRate])
+  }, [])
 
-  function play(rateToUse = speechRate) {
-    const synth = window.speechSynthesis
-    if (!synth) return
-    if (state === 'paused') {
-      synth.resume()
-      setState('playing')
-      startSentenceTimer(rateToUse)
-      return
-    }
-
-    synth.cancel()
-    setActiveSentenceIndex(0)
-    const u = new SpeechSynthesisUtterance(script)
-    u.lang = 'id-ID'
-    u.rate = rateToUse
-
-    u.onend = () => {
-      setState('idle')
-      if (timerRef.current) clearInterval(timerRef.current)
-      setActiveSentenceIndex(sentences.length - 1)
-    }
-
-    synth.speak(u)
-    setState('playing')
-    startSentenceTimer(rateToUse)
-  }
-
-  function changeRate(newRate: 0.8 | 1.0 | 1.2) {
-    setSpeechRate(newRate)
-    if (state === 'playing') {
-      window.speechSynthesis?.cancel()
-      play(newRate)
-    }
-  }
-
-  function pause() {
-    window.speechSynthesis?.pause()
-    setState('paused')
-    if (timerRef.current) clearInterval(timerRef.current)
-  }
-
-  function stop() {
-    window.speechSynthesis?.cancel()
-    setState('idle')
-    if (timerRef.current) clearInterval(timerRef.current)
-    setActiveSentenceIndex(0)
-  }
-
-  // Timer to advance sentence tracking visually
-  function startSentenceTimer(rateToUse = speechRate) {
-    if (timerRef.current) clearInterval(timerRef.current)
-    // Approximate pacing adjusted for speech rate
-    const interval = Math.round(3500 / rateToUse)
-    timerRef.current = setInterval(() => {
-      setActiveSentenceIndex((prev) => {
-        if (prev < sentences.length - 1) {
-          return prev + 1
-        }
-        return prev
-      })
-    }, interval)
-  }
-
-  const currentSentence = sentences[activeSentenceIndex] || sentences[0] || ''
+  const currentSentence = sentences[current]?.text || ''
+  const reading = state !== 'idle'
 
   return (
     <div className="@container flex flex-col gap-6">
@@ -259,7 +298,7 @@ export function ScriptPlayer({
                       <Pause className="size-4" aria-hidden="true" /> Jeda
                     </button>
                   ) : (
-                    <button type="button" className={btnPrimary} onClick={() => play()}>
+                    <button type="button" className={btnPrimary} onClick={play}>
                       <Play className="size-4" aria-hidden="true" /> {state === 'paused' ? 'Lanjutkan' : 'Putar Suara'}
                     </button>
                   )}
@@ -267,6 +306,34 @@ export function ScriptPlayer({
                     <button type="button" className={btnSecondary} onClick={stop}>
                       <Square className="size-4" aria-hidden="true" /> Berhenti
                     </button>
+                  )}
+                  {parts.length > 1 && (
+                    <div className="flex items-center gap-1" role="group" aria-label="Pindah bagian naskah">
+                      <button
+                        type="button"
+                        className={cn(btnSecondary, 'px-3')}
+                        onClick={() => playPart(currentPart - 1)}
+                        disabled={currentPart === 0}
+                        aria-label="Bagian sebelumnya"
+                        title="Bagian sebelumnya"
+                      >
+                        <SkipBack className="size-4" aria-hidden="true" />
+                      </button>
+                      {/* Not a live region: it would talk over the narration on every new part. */}
+                      <span className="min-w-[4.5rem] text-center text-xs font-bold text-muted-foreground">
+                        Bagian {currentPart + 1}/{parts.length}
+                      </span>
+                      <button
+                        type="button"
+                        className={cn(btnSecondary, 'px-3')}
+                        onClick={() => playPart(currentPart + 1)}
+                        disabled={currentPart >= parts.length - 1}
+                        aria-label="Bagian berikutnya"
+                        title="Bagian berikutnya"
+                      >
+                        <SkipForward className="size-4" aria-hidden="true" />
+                      </button>
+                    </div>
                   )}
 
                   {/* Speech Rate Controls (PRD F-03: 0.8x, 1.0x, 1.2x) */}
@@ -393,7 +460,7 @@ export function ScriptPlayer({
             </div>
           </div>
 
-          {/* 5. FULL SYNCHRONIZED TRANSCRIPT WITH SENTENCE HIGHLIGHT */}
+          {/* 5. FULL SYNCHRONIZED TRANSCRIPT: one block per part, the sentence being read is highlighted */}
           <div
             className={cn(
               'rounded-2xl border border-border bg-white p-5 sm:p-7 shadow-2xs leading-relaxed space-y-4',
@@ -402,30 +469,44 @@ export function ScriptPlayer({
               fontSize === 'lg' && 'text-xl',
             )}
           >
-            <div className="flex items-center justify-between border-b border-border/80 pb-3 text-xs font-bold text-muted-foreground">
-              <span>Naskah Materi Lengkap ({sentences.length} Paragraf)</span>
-              <span>Klik kalimat untuk menyorot</span>
+            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3 text-xs font-bold text-muted-foreground">
+              <span>
+                Naskah Materi Lengkap ({parts.length} bagian · {sentences.length} kalimat)
+              </span>
+              <span>Klik kalimat untuk memutar dari sana</span>
             </div>
 
             <div className="space-y-3">
-              {sentences.map((sent, sIdx) => {
-                const isActive = sIdx === activeSentenceIndex && state === 'playing'
-
-                return (
-                  <p
-                    key={sIdx}
-                    onClick={() => setActiveSentenceIndex(sIdx)}
-                    className={cn(
-                      'cursor-pointer rounded-xl p-2.5 transition-all text-balance',
-                      isActive
-                        ? 'bg-lime/25 border-l-4 border-lime text-foreground font-bold shadow-2xs'
-                        : 'hover:bg-neutral-50 text-foreground/90 font-medium',
-                    )}
-                  >
-                    {sent}
+              {parts.map((part, p) => (
+                <section
+                  key={p}
+                  id={partElementId(p)}
+                  aria-label={`Bagian ${p + 1}`}
+                  className={cn(
+                    'scroll-mt-24 rounded-xl border-l-4 p-2.5 transition-colors',
+                    reading && p === currentPart ? 'border-lime bg-lime/5' : 'border-transparent',
+                  )}
+                >
+                  <p className="text-balance">
+                    {sentences.slice(part.first, part.last + 1).map((sent, i) => {
+                      const sIdx = part.first + i
+                      const isActive = sIdx === current && reading
+                      return (
+                        <span
+                          key={sIdx}
+                          onClick={() => speakFrom(sIdx)}
+                          className={cn(
+                            'cursor-pointer rounded-md px-0.5 transition-colors',
+                            isActive ? 'bg-lime/40 font-bold text-foreground' : 'font-medium text-foreground/90 hover:bg-neutral-100',
+                          )}
+                        >
+                          {sent.text}{' '}
+                        </span>
+                      )
+                    })}
                   </p>
-                )
-              })}
+                </section>
+              ))}
             </div>
           </div>
 

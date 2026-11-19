@@ -1,12 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, FileQuestion } from 'lucide-react'
 import { EmptyState, Skeleton } from '@/components/site/form'
-import { ScriptPlayer } from '@/components/module/script-player'
+import { ScriptPlayer, type ScriptPlayerHandle } from '@/components/module/script-player'
 import { VisualSummaryView } from '@/components/module/visual-summary'
-import { LessonNavigator, getChaptersForModule } from '@/components/student/lesson-navigator'
+import {
+  LessonNavigator,
+  getChaptersForModule,
+  getChaptersForScript,
+  scriptLessonId,
+} from '@/components/student/lesson-navigator'
 import { fetchModuleById, useHydrated, useStore } from '@/lib/store'
 
 export function ModuleViewer({ id, mode }: { id: string; mode: 'visual' | 'audio' }) {
@@ -15,6 +20,9 @@ export function ModuleViewer({ id, mode }: { id: string; mode: 'visual' | 'audio
   const [loading, setLoading] = useState(!mod || !mod.blindAudioScript)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  // Audio page: the lesson list is the script's parts and follows the narration.
+  const playerRef = useRef<ScriptPlayerHandle>(null)
+  const [partIndex, setPartIndex] = useState(0)
   const back = mode === 'visual' ? '/tunarungu/kartu' : '/tunanetra'
 
   useEffect(() => {
@@ -43,7 +51,7 @@ export function ModuleViewer({ id, mode }: { id: string; mode: 'visual' | 'audio
   }
   if (!mod) return <EmptyState icon={FileQuestion} text="Modul tidak ditemukan." action={<Link href={back} className="font-bold underline">Kembali</Link>} />
 
-  const chapters = getChaptersForModule(mod)
+  const chapters = mode === 'audio' ? getChaptersForScript(mod.blindAudioScript) : getChaptersForModule(mod)
 
   return (
     <article className="flex flex-col gap-6 sm:gap-8">
@@ -71,18 +79,29 @@ export function ModuleViewer({ id, mode }: { id: string; mode: 'visual' | 'audio
             <VisualSummaryView data={mod.deafVisualSummary} />
           ) : (
             <ScriptPlayer
+              ref={playerRef}
               script={mod.blindAudioScript}
               moduleId={id}
               moduleTitle={mod.title}
               visualData={mod.deafVisualSummary}
+              onPartChange={setPartIndex}
             />
           )}
         </div>
         <aside className="order-first lg:order-last lg:col-span-5 xl:col-span-4 lg:sticky lg:top-8">
-          <LessonNavigator
-            chapters={chapters}
-            moduleTitle={mod.title}
-          />
+          {mode === 'audio' ? (
+            <LessonNavigator
+              chapters={chapters}
+              moduleTitle={mod.title}
+              activeLessonId={scriptLessonId(partIndex)}
+              onSelectLesson={(lesson) => {
+                const index = chapters[0]?.lessons.findIndex((l) => l.id === lesson.id) ?? -1
+                if (index >= 0) playerRef.current?.playPart(index)
+              }}
+            />
+          ) : (
+            <LessonNavigator chapters={chapters} moduleTitle={mod.title} />
+          )}
         </aside>
       </div>
     </article>

@@ -2,6 +2,7 @@
 
 import { useId, useState } from 'react'
 import { ChevronDown, ChevronUp, Compass } from 'lucide-react'
+import { splitScript } from '@/lib/audio-script'
 import { buildModuleLessons, type ModuleLesson } from '@/lib/module-lessons'
 import type { LearningModule } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -23,7 +24,10 @@ export interface Chapter {
 
 interface LessonNavigatorProps {
   chapters?: Chapter[]
-  /** Lesson highlighted at first; defaults to the first lesson. */
+  /**
+   * The highlighted lesson. When given, the page controls it (e.g. it follows the audio being read);
+   * otherwise the navigator highlights the last lesson clicked, starting with the first.
+   */
   activeLessonId?: string
   onSelectLesson?: (lesson: Lesson) => void
   moduleTitle?: string
@@ -43,6 +47,31 @@ function targetIdFor(lesson: ModuleLesson) {
   }
 }
 
+/** Lesson id of part `index` (0-based) of an audio script, see getChaptersForScript. */
+export const scriptLessonId = (index: number) => `naskah-${index + 1}`
+
+/**
+ * Navigator for the audio page: one lesson per paragraph of the audio script, named by its first sentence, so
+ * choosing a lesson moves the narration there. (The visual summary's sections have no matching place in the
+ * script, so they can't be used to jump in the audio.)
+ */
+export function getChaptersForScript(script: string): Chapter[] {
+  const { parts, sentences } = splitScript(script)
+  if (parts.length === 0) return []
+  return [
+    {
+      id: 'naskah-audio',
+      number: '1',
+      title: 'Naskah audio',
+      lessons: parts.map((part, i) => ({
+        id: scriptLessonId(i),
+        number: `${i + 1}.`,
+        title: sentences[part.first]?.text ?? part.text,
+      })),
+    },
+  ]
+}
+
 /** Navigator chapters for a module, from its visual summary only. Empty when there is no module. */
 export function getChaptersForModule(mod?: Pick<LearningModule, 'title' | 'deafVisualSummary'>): Chapter[] {
   if (!mod) return []
@@ -60,7 +89,7 @@ export function getChaptersForModule(mod?: Pick<LearningModule, 'title' | 'deafV
 }
 
 export function LessonNavigator({ chapters = [], activeLessonId, onSelectLesson, moduleTitle }: LessonNavigatorProps) {
-  const [selectedId, setSelectedId] = useState(activeLessonId)
+  const [selectedId, setSelectedId] = useState<string | undefined>()
   const [isMobileExpanded, setIsMobileExpanded] = useState(false)
   const listId = useId()
 
@@ -68,7 +97,7 @@ export function LessonNavigator({ chapters = [], activeLessonId, onSelectLesson,
   const allLessons = visibleChapters.flatMap((c) => c.lessons)
   if (allLessons.length === 0) return null
 
-  const activeLesson = allLessons.find((l) => l.id === selectedId) ?? allLessons[0]
+  const activeLesson = allLessons.find((l) => l.id === (activeLessonId ?? selectedId)) ?? allLessons[0]
 
   const handleLessonClick = (lesson: Lesson) => {
     setSelectedId(lesson.id)
