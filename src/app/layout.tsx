@@ -32,7 +32,9 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="id" className="bg-background">
+    // Smooth scroll for in-page links (#keunggulan, #portal), off under prefers-reduced-motion.
+    // data-scroll-behavior lets Next.js switch it off during route changes so new pages open at the top instantly.
+    <html lang="id" className="bg-background motion-safe:scroll-smooth" data-scroll-behavior="smooth">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
