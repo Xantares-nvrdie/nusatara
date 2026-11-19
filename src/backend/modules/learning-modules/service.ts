@@ -1,6 +1,7 @@
-import { and, count, desc, eq, ilike } from "drizzle-orm";
+import { and, count, desc, eq, ilike, sql } from "drizzle-orm";
 import { status } from "elysia";
 import { extractText } from "unpdf";
+import type { DeafVisualSummary } from "@/backend/utils/model";
 import { escapeLike, toOffset } from "@/backend/utils/query";
 import { db } from "@/db";
 import { learningModules, user } from "@/db/schema";
@@ -10,6 +11,7 @@ import {
     type ConvertResult,
     type CreateModuleBody,
     DEFAULT_GENERATED_QUESTIONS,
+    GLOSSARY_MODULE_LIMIT,
     type ListModulesQuery,
     MAX_CONTENT_CHARS,
     MAX_PDF_PAGES,
@@ -168,6 +170,28 @@ export const LearningModuleService = {
                 .offset(toOffset(page, pageSize)),
         ]);
         return { items, total, page, pageSize };
+    },
+
+    /**
+     * Glossary terms (term + definition) from the newest modules, flattened and sorted A-Z for the
+     * student "Kamus Istilah" page. Only the JSONB glossary is read, not the module bodies.
+     */
+    async glossary() {
+        const rows = await db
+            .select({
+                moduleId: learningModules.id,
+                moduleTitle: learningModules.title,
+                glossary: sql<DeafVisualSummary["glossary"] | null>`${learningModules.deafVisualSummary} -> 'glossary'`,
+            })
+            .from(learningModules)
+            .orderBy(desc(learningModules.createdAt), desc(learningModules.id))
+            .limit(GLOSSARY_MODULE_LIMIT);
+
+        const items = rows.flatMap(({ moduleId, moduleTitle, glossary }) =>
+            (glossary ?? []).map(({ term, definition }) => ({ term, definition, moduleId, moduleTitle })),
+        );
+        items.sort((a, b) => a.term.localeCompare(b.term, "id", { sensitivity: "base" }));
+        return { items };
     },
 
     async getById(id: string) {

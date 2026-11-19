@@ -17,7 +17,7 @@ export const TUNANETRA_NAV_LINKS: NavLinkItem[] = [
 export const TUNARUNGU_NAV_LINKS: NavLinkItem[] = [
   { href: '/tunarungu/kartu', label: 'Kartu Materi' },
   { href: '/tunarungu/peta-konsep', label: 'Peta Konsep' },
-  { href: '/tunarungu/isyarat', label: 'Kamus Isyarat' },
+  { href: '/tunarungu/istilah', label: 'Kamus Istilah' },
   { href: '/tunarungu/ujian', label: 'Ujian Visual' },
 ]
 

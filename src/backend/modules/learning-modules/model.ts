@@ -16,6 +16,8 @@ export const MAX_UPLOAD_SIZE = "4m";
 export const MAX_PDF_PAGES = 30;
 export const MAX_GENERATED_QUESTIONS = 20;
 export const DEFAULT_GENERATED_QUESTIONS = 5;
+/** The glossary endpoint reads terms from this many of the newest modules, to keep the payload bounded. */
+export const GLOSSARY_MODULE_LIMIT = 100;
 
 const ModuleListItem = t.Object({
     id: t.String(),
@@ -67,6 +69,16 @@ export const LearningModuleModel = {
         deafVisualSummary: DeafVisualSummary,
     }),
     listResponse: Paginated(ModuleListItem),
+    glossaryResponse: t.Object({
+        items: t.Array(
+            t.Object({
+                term: t.String(),
+                definition: t.String(),
+                moduleId: t.String(),
+                moduleTitle: t.String(),
+            }),
+        ),
+    }),
     detail: ModuleDetail,
     error: ErrorResponse,
 } as const;

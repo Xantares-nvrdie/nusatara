@@ -1,6 +1,6 @@
 import { Elysia, status } from "elysia";
 import betterAuthMiddleware from "@/backend/utils/better-auth/middleware";
-import { LearningModuleModel as M } from "./model";
+import { GLOSSARY_MODULE_LIMIT, LearningModuleModel as M } from "./model";
 import { LearningModuleService } from "./service";
 
 const learningModulesModule = new Elysia({ prefix: "/modules", tags: ["Modules"] })
@@ -40,6 +40,13 @@ const learningModulesModule = new Elysia({ prefix: "/modules", tags: ["Modules"]
         query: M.listQuery,
         response: { 200: M.listResponse },
         detail: { summary: "List modules created by the signed-in teacher" },
+    })
+    .get("/glossary", () => LearningModuleService.glossary(), {
+        response: { 200: M.glossaryResponse },
+        detail: {
+            summary: "Glossary terms from all modules (public)",
+            description: `Term + definition pairs from each module's deafVisualSummary.glossary (newest ${GLOSSARY_MODULE_LIMIT} modules), sorted A-Z.`,
+        },
     })
     .get("/:id", ({ params }) => LearningModuleService.getById(params.id), {
         params: M.params,
