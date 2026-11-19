@@ -69,7 +69,6 @@ export function ConvertForm() {
           body: formData,
         })
       } else {
-        // Try backend /api/modules/convert first
         res = await fetch('/api/modules/convert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -79,15 +78,6 @@ export function ConvertForm() {
             questionCount: 5,
           }),
         })
-
-        // If not found (e.g. legacy endpoint), try /api/konversi
-        if (res.status === 404) {
-          res = await fetch('/api/konversi', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, text }),
-          })
-        }
       }
 
       const data = await res.json()

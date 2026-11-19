@@ -1,10 +1,10 @@
 # NusaTara
 
-Starter mengikuti stack INKLUSA.
+Satu aplikasi Next.js (monolith) mengikuti struktur INKLUSA: halaman frontend dan API Elysia di `/api` berjalan di satu server dan satu origin (port 3000), dengan satu `package.json` dan satu `.env` di root.
 
 | Lapisan | Teknologi |
 | --- | --- |
-| Frontend | Next.js 16 (App Router), React 19, Tailwind CSS 4, Framer Motion, Lucide React |
+| Frontend | Next.js 16 (App Router), React 19, Tailwind CSS 4, shadcn + Base UI, GSAP, Lucide React |
 | Backend & API | Elysia.js (di-*mount* pada `/api`), OpenAPI di `/api/labs` |
 | Autentikasi | Better Auth (email/password, Google OAuth opsional, plugin admin) |
 | Basis Data | PostgreSQL, Drizzle ORM, Drizzle Kit |
@@ -19,7 +19,7 @@ bun install
 cp .env.example .env   # isi DATABASE_URL, DIRECT_URL, BETTER_AUTH_SECRET, GEMINI_API_KEY
 bun run db:push        # buat tabel auth + NusaTara di database
 bun run db:seed        # opsional: akun guru demo, modul, ujian, nilai
-bun run dev
+bun run dev            # http://localhost:3000 (API di /api, dokumentasi di /api/labs)
 ```
 
 ### Data demo (`bun run db:seed`)
@@ -54,11 +54,17 @@ Semua error berbentuk `{ message }` (422 validasi juga menyertakan `errors[]`).
 ## Struktur
 
 ```
+public/                             # Ikon dan gambar portal
 src/
 ├── app/
 │   ├── api/[[...slugs]]/route.ts   # Elysia app, semua endpoint di /api
+│   ├── guru/                       # Portal guru: modul, ujian, nilai, profil
+│   ├── tunanetra/                  # Portal siswa tunanetra (audio & ujian suara)
+│   ├── tunarungu/                  # Portal siswa tunarungu (kartu visual, peta konsep)
+│   ├── masuk/, daftar/             # Login & registrasi
 │   ├── layout.tsx
-│   └── page.tsx
+│   └── page.tsx                    # Landing page
+├── components/                     # Komponen UI per portal (guru, student, module, site, ui)
 ├── auth.ts                         # Konfigurasi Better Auth
 ├── backend/
 │   ├── modules/<fitur>/            # index.ts (routes), model.ts (validasi), service.ts (query db)
@@ -71,7 +77,7 @@ src/
 ├── db/
 │   ├── index.ts                    # Koneksi Drizzle + pg Pool
 │   └── schema/                     # Tabel Drizzle (daftarkan di schema/index.ts)
-└── lib/                            # api() fetch helper, auth-client, cn()
+└── lib/                            # api() fetch helper ke /api, store, speech, auth-client, cn()
 ```
 
 ## Menambah modul baru

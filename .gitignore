@@ -1,27 +1,28 @@
 # dependencies
-node_modules/
-**/node_modules/
-.pnp
+/node_modules
+/.pnp
 .pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing & coverage
+/coverage
+/.nyc_output
 
 # next.js & build output
-.next/
-**/.next/
-out/
-**/out/
-build/
-**/build/
-dist/
-**/dist/
-.turbo/
+/.next/
+/out/
+/build/
+/dist/
+/.turbo/
 
 # environment variables
 .env
 .env.*
 !.env.example
-**/.env
-**/.env.*
-!**/.env.example
 
 # debug & logs
 npm-debug.log*
@@ -33,24 +34,45 @@ bun.log
 
 # vercel
 .vercel
-**/.vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-**/next-env.d.ts
 
 # IDEs & OS metadata
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
 .idea/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# SSL keys & certs
+*.pem
+
+# Temporary files
+*.tmp
+
+*.MD
+!README.md
 
 # agent metadata
 .agents/
 skills-lock.json
 
+# local docs & design artifacts
+docs/*
+product_requirements_document_prd_nusatara.md

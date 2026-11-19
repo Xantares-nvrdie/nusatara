@@ -11,8 +11,8 @@ if (!secret && process.env.NODE_ENV === "production") {
 
 const googleEnabled = Boolean(
     process.env.GOOGLE_CLIENT_ID &&
-    process.env.GOOGLE_CLIENT_SECRET &&
-    !process.env.GOOGLE_CLIENT_ID.includes("your-google-client-id")
+        process.env.GOOGLE_CLIENT_SECRET &&
+        !process.env.GOOGLE_CLIENT_ID.includes("your-google-client-id"),
 );
 
 export const auth = betterAuth({
@@ -41,8 +41,6 @@ export const auth = betterAuth({
             : undefined),
     trustedOrigins: [
         "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",
         process.env.NEXT_PUBLIC_APP_URL ?? "",
         process.env.BETTER_AUTH_URL ?? "",
         process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",

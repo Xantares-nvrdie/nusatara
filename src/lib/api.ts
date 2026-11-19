@@ -9,12 +9,8 @@ export class ApiError extends Error {
   }
 }
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  (typeof window !== 'undefined' ? '' : 'http://localhost:3001')
-
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${BACKEND_URL}/api${path.startsWith('/') ? path : `/${path}`}`
+  const url = `/api${path.startsWith('/') ? path : `/${path}`}`
 
   const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData
   const headers = new Headers(init?.headers)
