@@ -178,7 +178,8 @@ export const LearningModuleService = {
     /** Lightweight list (no content bodies) to keep payloads small on low-bandwidth connections. */
     async list(query: ListModulesQuery, teacherId?: string) {
         const { page, pageSize } = pageParams(query.page, query.pageSize);
-        const search = query.q?.trim();
+        // The schema caps `q` at 100 characters, but `next start` doesn't enforce query bounds (see query.ts).
+        const search = query.q?.trim().slice(0, 100);
         const where = and(
             teacherId ? eq(learningModules.teacherId, teacherId) : undefined,
             search ? ilike(learningModules.title, `%${escapeLike(search)}%`) : undefined,

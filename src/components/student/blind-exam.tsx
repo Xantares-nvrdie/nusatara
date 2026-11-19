@@ -598,7 +598,7 @@ export function BlindExam() {
           >
             {heading('Siapa nama Anda?')}
             <p className="text-base text-white/80">
-              Sebutkan nama lewat mikrofon, ketik manual, atau gunakan tombol demo untuk mulai langsung.
+              Sebutkan nama lewat mikrofon (tekan V untuk mode suara), atau ketik nama lalu tekan Enter.
             </p>
             <label htmlFor="nama" className="sr-only">
               Nama siswa

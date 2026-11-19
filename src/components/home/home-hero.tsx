@@ -21,13 +21,13 @@ import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { DecoSquares, GridBackground } from '@/components/site/decor'
 import { DarkCapsuleNavbar } from '@/components/site/navbar'
+import { ModuleSearch } from '@/components/home/module-search'
 
 const PORTALS = [
   {
     href: '/guru',
     badge: 'Portal Pendidik',
     name: 'Guru & Pengajar',
-    handle: '@guru.nusatara',
     subtitle: 'Konversi AI & Ujian',
     icon: School,
     image: '/images/portal-guru.png',
@@ -37,7 +37,6 @@ const PORTALS = [
     href: '/tunanetra',
     badge: 'Voice Only & Speech',
     name: 'Siswa Tunanetra',
-    handle: '@suara.nusatara',
     subtitle: 'Ujian Mandiri Suara',
     icon: Headphones,
     image: '/images/portal-tunanetra.png',
@@ -47,7 +46,6 @@ const PORTALS = [
     href: '/tunarungu',
     badge: 'Visual & Isyarat',
     name: 'Siswa Tunarungu',
-    handle: '@visual.nusatara',
     subtitle: 'Peta Konsep & Isyarat',
     icon: Hand,
     image: '/images/portal-tunarungu.png',
@@ -172,7 +170,7 @@ export function HomeHero() {
       <header className="hero-nav relative z-30">
         <DarkCapsuleNavbar
           links={[
-            { href: '#portal', label: 'Cari Modul' },
+            { href: '#cari-modul', label: 'Cari Modul' },
             { href: '/tunanetra', label: 'Pemutar Suara' },
             { href: '/tunarungu', label: 'Bantuan Akses' },
             { href: '#keunggulan', label: 'Keunggulan' },
@@ -297,24 +295,20 @@ export function HomeHero() {
                   </h3>
                 </div>
 
-                {/* Bottom Bar: Avatar, Info & Masuk Button */}
+                {/* Bottom Bar: icon, what the portal offers, and an arrow (the whole card is the link) */}
                 <div className="relative z-10 flex items-center justify-between gap-3 pt-3">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/20 text-lime backdrop-blur-md shadow-inner">
-                      <p.icon className="size-5" />
+                      <p.icon className="size-5" aria-hidden="true" />
                     </span>
-                    <div className="min-w-0 text-left">
-                      <span className="block truncate text-xs font-bold text-white drop-shadow">
-                        {p.handle}
-                      </span>
-                      <span className="block truncate text-[11px] font-medium text-white/75 drop-shadow">
-                        {p.subtitle}
-                      </span>
-                    </div>
+                    <span className="block truncate text-left text-xs font-bold text-white drop-shadow">{p.subtitle}</span>
                   </div>
 
-                  <span className="shrink-0 rounded-full bg-white px-5 py-2 text-xs font-bold text-neutral-950 shadow-md transition-all duration-300 group-hover:scale-105 group-hover:bg-lime group-hover:text-black">
-                    Masuk
+                  <span
+                    aria-hidden="true"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-neutral-950 shadow-md transition-all duration-300 group-hover:scale-105 group-hover:bg-lime"
+                  >
+                    <ArrowRight className="size-4" strokeWidth={2.5} />
                   </span>
                 </div>
               </Link>
@@ -322,6 +316,9 @@ export function HomeHero() {
           </div>
         </div>
       </section>
+
+      {/* Public module search ("Cari Modul" in the navbar) */}
+      <ModuleSearch />
 
       {/* Feature Highlights Section: Inovasi Aksesibilitas */}
       <section id="keunggulan" className="relative z-10 border-t border-black/10 bg-white px-6 py-16 lg:px-12">
