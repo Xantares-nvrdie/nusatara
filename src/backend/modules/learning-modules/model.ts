@@ -18,6 +18,8 @@ export const MAX_GENERATED_QUESTIONS = 20;
 export const DEFAULT_GENERATED_QUESTIONS = 5;
 /** The glossary endpoint reads terms from this many of the newest modules, to keep the payload bounded. */
 export const GLOSSARY_MODULE_LIMIT = 100;
+/** Same bound for the concept-map overview. */
+export const CONCEPT_MAP_MODULE_LIMIT = 100;
 
 const ModuleListItem = t.Object({
     id: t.String(),
@@ -69,6 +71,15 @@ export const LearningModuleModel = {
         deafVisualSummary: DeafVisualSummary,
     }),
     listResponse: Paginated(ModuleListItem),
+    conceptMapResponse: t.Object({
+        items: t.Array(
+            t.Object({
+                moduleId: t.String(),
+                moduleTitle: t.String(),
+                conceptMap: DeafVisualSummary.properties.conceptMap,
+            }),
+        ),
+    }),
     glossaryResponse: t.Object({
         items: t.Array(
             t.Object({

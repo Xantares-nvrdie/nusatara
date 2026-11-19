@@ -75,6 +75,24 @@ export const ExamModel = {
         questionCount: t.Integer(),
         questions: t.Array(PublicExamQuestion),
     }),
+    resultsQuery: t.Object({
+        name: NonEmptyString(100, {
+            description: "Nama siswa persis seperti saat ujian (huruf besar/kecil diabaikan)",
+        }),
+    }),
+    /** Student "Cek Nilai": scores only, never the answers or the answer key. */
+    resultsResponse: t.Object({
+        items: t.Array(
+            t.Object({
+                examTitle: t.String(),
+                studentName: t.String(),
+                score: t.Integer(),
+                correctCount: t.Integer(),
+                totalQuestions: t.Integer(),
+                submittedAt: t.Date(),
+            }),
+        ),
+    }),
     submitResponse: t.Object({
         submissionId: t.String(),
         studentName: t.String(),
@@ -90,3 +108,4 @@ export const ExamModel = {
 export type CreateExamBody = typeof ExamModel.createBody.static;
 export type SubmitExamBody = typeof ExamModel.submitBody.static;
 export type ListExamsQuery = typeof ExamModel.listQuery.static;
+export type ResultsQuery = typeof ExamModel.resultsQuery.static;

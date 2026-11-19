@@ -1,6 +1,6 @@
 import { Elysia, status } from "elysia";
 import betterAuthMiddleware from "@/backend/utils/better-auth/middleware";
-import { GLOSSARY_MODULE_LIMIT, LearningModuleModel as M } from "./model";
+import { CONCEPT_MAP_MODULE_LIMIT, GLOSSARY_MODULE_LIMIT, LearningModuleModel as M } from "./model";
 import { LearningModuleService } from "./service";
 
 const learningModulesModule = new Elysia({ prefix: "/modules", tags: ["Modules"] })
@@ -40,6 +40,13 @@ const learningModulesModule = new Elysia({ prefix: "/modules", tags: ["Modules"]
         query: M.listQuery,
         response: { 200: M.listResponse },
         detail: { summary: "List modules created by the signed-in teacher" },
+    })
+    .get("/concept-maps", () => LearningModuleService.conceptMaps(), {
+        response: { 200: M.conceptMapResponse },
+        detail: {
+            summary: "Concept maps of all modules (public)",
+            description: `deafVisualSummary.conceptMap of the newest ${CONCEPT_MAP_MODULE_LIMIT} modules, newest first.`,
+        },
     })
     .get("/glossary", () => LearningModuleService.glossary(), {
         response: { 200: M.glossaryResponse },

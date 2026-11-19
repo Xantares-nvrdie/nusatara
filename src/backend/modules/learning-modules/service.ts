@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { learningModules, user } from "@/db/schema";
 import { convertMaterial, type MaterialSource } from "./converter";
 import {
+    CONCEPT_MAP_MODULE_LIMIT,
     type ConvertBody,
     type ConvertResult,
     type CreateModuleBody,
@@ -191,6 +192,20 @@ export const LearningModuleService = {
             (glossary ?? []).map(({ term, definition }) => ({ term, definition, moduleId, moduleTitle })),
         );
         items.sort((a, b) => a.term.localeCompare(b.term, "id", { sensitivity: "base" }));
+        return { items };
+    },
+
+    /** Concept map of each of the newest modules, for the student "Peta Konsep" page. Reads only that JSONB key. */
+    async conceptMaps() {
+        const items = await db
+            .select({
+                moduleId: learningModules.id,
+                moduleTitle: learningModules.title,
+                conceptMap: sql<DeafVisualSummary["conceptMap"]>`${learningModules.deafVisualSummary} -> 'conceptMap'`,
+            })
+            .from(learningModules)
+            .orderBy(desc(learningModules.createdAt), desc(learningModules.id))
+            .limit(CONCEPT_MAP_MODULE_LIMIT);
         return { items };
     },
 

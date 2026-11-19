@@ -2,6 +2,7 @@ import { openapi } from "@elysiajs/openapi";
 import { Elysia } from "elysia";
 import examsModule from "@/backend/modules/exams";
 import learningModulesModule from "@/backend/modules/learning-modules";
+import practiceModule from "@/backend/modules/practice";
 import profileModule from "@/backend/modules/profile";
 import submissionsModule from "@/backend/modules/submissions";
 import betterAuthView from "@/backend/utils/better-auth";
@@ -30,7 +31,8 @@ export const app = new Elysia({ prefix: "/api" })
     .use(profileModule)
     .use(learningModulesModule)
     .use(examsModule)
-    .use(submissionsModule);
+    .use(submissionsModule)
+    .use(practiceModule);
 
 export type App = typeof app;
 

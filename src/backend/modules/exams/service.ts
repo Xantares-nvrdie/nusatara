@@ -5,10 +5,12 @@ import type { AnswerKey, ExamQuestion, SubmissionAnswer } from "@/backend/utils/
 import { isUniqueViolation, toOffset } from "@/backend/utils/query";
 import { db } from "@/db";
 import { EXAM_ACTIVE_PIN_INDEX, exams, learningModules, submissions } from "@/db/schema";
-import type { CreateExamBody, ListExamsQuery, SubmitExamBody } from "./model";
+import type { CreateExamBody, ListExamsQuery, ResultsQuery, SubmitExamBody } from "./model";
 
 /** Retries on PIN collision. With few active exams out of 10,000 PINs, one attempt almost always succeeds. */
 const PIN_ATTEMPTS = 10;
+/** A student rarely has more than a few attempts under one PIN; this just bounds the response. */
+const RESULTS_LIMIT = 20;
 
 const EXAM_NOT_FOUND = { message: "Ujian tidak ditemukan." };
 // Codes let a student device decide what to do: keep its answers (EXAM_CLOSED) or ask for a new PIN (PIN_NOT_FOUND).
@@ -184,6 +186,28 @@ export const ExamService = {
             questionCount: exam.questions.length,
             questions: exam.questions.map(({ id, question, options }) => ({ id, question, options })),
         };
+    },
+
+    /**
+     * Student "Cek Nilai": scores for one name under a PIN, newest first. Includes closed exams so results stay
+     * visible after the teacher closes the exam. Only the PIN and the exact name (case-insensitive) unlock them.
+     */
+    async results(pin: string, { name }: ResultsQuery) {
+        const items = await db
+            .select({
+                examTitle: exams.title,
+                studentName: submissions.studentName,
+                score: submissions.score,
+                correctCount: submissions.correctCount,
+                totalQuestions: submissions.totalQuestions,
+                submittedAt: submissions.submittedAt,
+            })
+            .from(submissions)
+            .innerJoin(exams, eq(exams.id, submissions.examId))
+            .where(and(eq(exams.pin, pin), sql`lower(btrim(${submissions.studentName})) = lower(btrim(${name}))`))
+            .orderBy(desc(submissions.submittedAt), desc(submissions.id))
+            .limit(RESULTS_LIMIT);
+        return { items };
     },
 
     /**

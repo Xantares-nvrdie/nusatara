@@ -33,6 +33,16 @@ const examsModule = new Elysia({ prefix: "/exams", tags: ["Exams"] })
         response: { 200: M.publicExam, 404: M.error, 409: M.error },
         detail: { summary: "Validate a PIN and get questions for the voice exam (no answer key)" },
     })
+    .get("/:pin/results", ({ params, query }) => ExamService.results(params.pin, query), {
+        params: M.pinParams,
+        query: M.resultsQuery,
+        response: { 200: M.resultsResponse },
+        detail: {
+            summary: "A student's own scores for a PIN (public, needs the exact name)",
+            description:
+                "For the student 'Cek Nilai' page. Returns scores only, never answers. Empty list when nothing matches.",
+        },
+    })
     .post(
         "/:pin/submit",
         async ({ params, body }) => {
