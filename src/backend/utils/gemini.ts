@@ -1,13 +1,26 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type GoogleGenAIInteraction } from "@google/genai";
 import { Value } from "@sinclair/typebox/value";
 import { type Static, status, type TSchema } from "elysia";
 
 const DEFAULT_MODEL = "gemini-3.8-flash";
 /**
- * Wall-clock budget for one call, including the SDK's automatic retries on 429/5xx.
- * Stays below the API route's `maxDuration` (60s) so we can still answer with a clean error.
+ * Tried in order when the main model is overloaded (503 "high demand"), rate limited, or doesn't answer in time.
+ * Override with GEMINI_FALLBACK_MODELS (comma separated; empty = no fallback). Measured 2026-11-19: availability
+ * changed minute to minute; the Flash-Lite models usually still answered (8-25 s) while Flash returned 503,
+ * timed out, or hit its rate limit. Each model has its own quota, so a fallback also helps on 429.
  */
-const REQUEST_DEADLINE_MS = 50_000;
+const DEFAULT_FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"];
+/**
+ * Wall-clock budget for the whole call across all models. Stays below the API route's `maxDuration` (120 s)
+ * so we can still answer with a clean error. A normal conversion takes ~30-40 s.
+ */
+const REQUEST_DEADLINE_MS = 110_000;
+/** One model may hang under load instead of answering 503; cap each attempt so a fallback still gets its turn. */
+const ATTEMPT_TIMEOUT_MS = 45_000;
+/** Not worth starting another model with less time than this. */
+const MIN_ATTEMPT_MS = 15_000;
+/** Worth trying the next model: overload, rate limit, server errors, unknown model, or no HTTP answer at all. */
+const FAILOVER_STATUSES = new Set([404, 408, 429, 500, 502, 503, 504]);
 
 let client: GoogleGenAI | undefined;
 
@@ -20,6 +33,15 @@ function getClient() {
     // Pin the stable API version so an SDK default change or GOOGLE_GENAI_API_VERSION can't switch it silently.
     client ??= new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "v1" } });
     return client;
+}
+
+function modelChain() {
+    const primary = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+    const fallbacks = (process.env.GEMINI_FALLBACK_MODELS ?? DEFAULT_FALLBACK_MODELS.join(","))
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean);
+    return [...new Set([primary, ...fallbacks])];
 }
 
 /**
@@ -57,9 +79,14 @@ type GenerateStructuredOptions<T extends TSchema> = {
     maxOutputTokens: number;
 };
 
+type Failure = { error: unknown; timedOut: boolean };
+
 /**
  * Calls Gemini (Interactions API) with a JSON schema and returns output validated against `schema`.
  * Throws Elysia `status()` errors with user-facing messages; provider details are only logged.
+ *
+ * Each model gets ONE attempt (SDK retries off): retrying an overloaded model with backoff used up the whole
+ * budget and ended in a 504 after ~58 s. Moving straight to the next model answers in seconds instead.
  */
 export async function generateStructured<T extends TSchema>({
     schema,
@@ -68,31 +95,48 @@ export async function generateStructured<T extends TSchema>({
     maxOutputTokens,
 }: GenerateStructuredOptions<T>): Promise<Static<T>> {
     const ai = getClient();
-    // A shared signal bounds all retry attempts together; the SDK's `timeout_ms` would restart per attempt.
-    const deadline = AbortSignal.timeout(REQUEST_DEADLINE_MS);
+    const startedAt = Date.now();
+    const models = modelChain();
 
-    let interaction: Awaited<ReturnType<typeof ai.interactions.create>>;
-    try {
-        interaction = await ai.interactions.create(
-            {
-                model: process.env.GEMINI_MODEL || DEFAULT_MODEL,
-                // Teacher material is processed once; nothing needs to be kept server-side at Google.
-                store: false,
-                system_instruction: systemInstruction,
-                // v1 takes input as steps; bare content parts are only accepted by v1beta.
-                input: [{ type: "user_input", content: input }],
-                generation_config: { thinking_level: "low", max_output_tokens: maxOutputTokens },
-                response_format: {
-                    type: "text",
-                    mime_type: "application/json",
-                    schema: toGeminiSchema(schema),
+    let interaction: GoogleGenAIInteraction | undefined;
+    let lastFailure: Failure | undefined;
+    for (const [index, model] of models.entries()) {
+        const remaining = REQUEST_DEADLINE_MS - (Date.now() - startedAt);
+        if (index > 0 && remaining < MIN_ATTEMPT_MS) break;
+        const attemptSignal = AbortSignal.timeout(Math.min(remaining, ATTEMPT_TIMEOUT_MS));
+        try {
+            interaction = await ai.interactions.create(
+                {
+                    model,
+                    // Teacher material is processed once; nothing needs to be kept server-side at Google.
+                    store: false,
+                    system_instruction: systemInstruction,
+                    // v1 takes input as steps; bare content parts are only accepted by v1beta.
+                    input: [{ type: "user_input", content: input }],
+                    generation_config: { thinking_level: "low", max_output_tokens: maxOutputTokens },
+                    response_format: {
+                        type: "text",
+                        mime_type: "application/json",
+                        schema: toGeminiSchema(schema),
+                    },
                 },
-            },
-            { signal: deadline },
-        );
-    } catch (error) {
-        throw toHttpError(error, deadline.aborted);
+                { signal: attemptSignal, retries: { strategy: "none" } },
+            );
+            if (index > 0) console.warn(`[gemini] Answered by fallback model ${model}`);
+            break;
+        } catch (error) {
+            lastFailure = { error, timedOut: attemptSignal.aborted };
+            const info = describe(error);
+            console.error(
+                `[gemini] ${model} failed (${info.name}, status ${info.httpStatus ?? (lastFailure.timedOut ? "timeout" : "n/a")}): ${info.message}`,
+            );
+            const worthFailover =
+                lastFailure.timedOut || info.httpStatus === undefined || FAILOVER_STATUSES.has(info.httpStatus);
+            if (!worthFailover) break;
+        }
     }
+
+    if (!interaction) throw toHttpError(lastFailure);
 
     if (interaction.status !== "completed" || !interaction.output_text) {
         console.error(`[gemini] Interaction ended with status "${interaction.status}"`);
@@ -119,24 +163,37 @@ export async function generateStructured<T extends TSchema>({
 type ProviderError = { name?: unknown; status?: unknown; statusCode?: unknown; message?: unknown; body?: unknown };
 
 /** The SDK has several error classes; they expose the HTTP status as `statusCode` and/or `status`. */
-function toHttpError(error: unknown, timedOut: boolean) {
+function describe(error: unknown) {
     const err = (error ?? {}) as ProviderError;
     const httpStatus =
         typeof err.statusCode === "number" ? err.statusCode : typeof err.status === "number" ? err.status : undefined;
     const body = typeof err.body === "string" ? err.body : "";
-    console.error(
-        `[gemini] Request failed (${String(err.name ?? "Error")}, status ${httpStatus ?? "n/a"}): ${providerMessage(body) ?? err.message}`,
-    );
+    return {
+        name: String(err.name ?? "Error"),
+        httpStatus,
+        body,
+        message: providerMessage(body) ?? String(err.message ?? ""),
+    };
+}
 
-    if (timedOut) {
-        return status(504, { message: "AI terlalu lama merespons. Coba lagi atau persingkat materi." });
+/** User-facing error for the last failed attempt (all models failed, or a non-retryable error). */
+function toHttpError(failure: Failure | undefined) {
+    const { httpStatus, body } = describe(failure?.error);
+
+    // An invalid key is reported as 400 with reason API_KEY_INVALID, not as 401.
+    if (httpStatus === 401 || httpStatus === 403 || body.includes("API_KEY_INVALID")) {
+        return status(503, { message: "Layanan AI belum dikonfigurasi dengan benar. Hubungi admin." });
+    }
+    if (httpStatus === 503) {
+        return status(503, {
+            message: "Layanan AI Google sedang sibuk karena banyak pengguna. Tunggu beberapa menit lalu coba lagi.",
+        });
     }
     if (httpStatus === 429) {
         return status(429, { message: "Kuota AI sedang penuh. Tunggu sebentar lalu coba lagi." });
     }
-    // An invalid key is reported as 400 with reason API_KEY_INVALID, not as 401.
-    if (httpStatus === 401 || httpStatus === 403 || body.includes("API_KEY_INVALID")) {
-        return status(503, { message: "Layanan AI belum dikonfigurasi dengan benar. Hubungi admin." });
+    if (failure?.timedOut) {
+        return status(504, { message: "AI terlalu lama merespons. Coba lagi atau persingkat materi." });
     }
     return status(502, { message: "Gagal memproses materi dengan AI. Silakan coba lagi." });
 }
