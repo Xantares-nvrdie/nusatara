@@ -17,7 +17,8 @@ function getClient() {
         console.error("[gemini] GEMINI_API_KEY is not set");
         throw status(503, { message: "Layanan AI belum dikonfigurasi. Hubungi admin." });
     }
-    client ??= new GoogleGenAI({ apiKey });
+    // Pin the stable API version so an SDK default change or GOOGLE_GENAI_API_VERSION can't switch it silently.
+    client ??= new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "v1" } });
     return client;
 }
 
@@ -78,7 +79,8 @@ export async function generateStructured<T extends TSchema>({
                 // Teacher material is processed once; nothing needs to be kept server-side at Google.
                 store: false,
                 system_instruction: systemInstruction,
-                input,
+                // v1 takes input as steps; bare content parts are only accepted by v1beta.
+                input: [{ type: "user_input", content: input }],
                 generation_config: { thinking_level: "low", max_output_tokens: maxOutputTokens },
                 response_format: {
                     type: "text",

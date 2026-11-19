@@ -189,7 +189,7 @@ async function syncTeacherData() {
 
     // Sync submissions
     try {
-      const subRes = await api<{ items: any[] }>('/submissions?pageSize=100')
+      const subRes = await api<{ items: any[] }>('/submissions?pageSize=50') // API max is 50
       if (subRes?.items && Array.isArray(subRes.items)) {
         const remoteSubs = subRes.items.map(normalizeSubmission)
         setState((s) => {

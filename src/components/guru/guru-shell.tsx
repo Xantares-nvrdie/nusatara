@@ -73,7 +73,7 @@ export function GuruShell({ children }: { children: React.ReactNode }) {
       <a href="#konten" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-lime focus:px-4 focus:py-2 focus:font-bold">
         Lewati ke konten
       </a>
-      <header className="sticky top-0 z-30">
+      <header className="guru-navbar sticky top-0 z-30">
         <DarkCapsuleNavbar
           links={NAV}
           userMenu={{
