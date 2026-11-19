@@ -142,10 +142,11 @@ export function ScriptPlayer({
   const currentSentence = sentences[activeSentenceIndex] || sentences[0] || ''
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="@container flex flex-col gap-6">
       {/* 1. TUNARUNGU FRIENDLY ACCESSIBILITY BANNER */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border-2 border-[#111] bg-gradient-to-r from-lime/30 via-white to-purple-50 p-4 sm:p-5 shadow-xs">
-        <div className="flex items-center gap-3">
+      {/* Layout follows this player's own width (@container), not the viewport: it often sits beside the lesson sidebar. */}
+      <div className="flex flex-col @2xl:flex-row items-start @2xl:items-center justify-between gap-4 rounded-2xl border-2 border-[#111] bg-gradient-to-r from-lime/30 via-white to-purple-50 p-4 sm:p-5 shadow-xs">
+        <div className="flex min-w-0 items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#111] text-lime shadow-xs">
             <Eye className="size-5" aria-hidden="true" />
           </span>
@@ -162,12 +163,12 @@ export function ScriptPlayer({
 
         {/* View Switcher Toggle */}
         {visualData && (
-          <div className="flex items-center rounded-xl border border-border bg-white p-1 shadow-2xs self-stretch sm:self-auto">
+          <div className="flex shrink-0 items-center rounded-xl border border-border bg-white p-1 shadow-2xs self-stretch @2xl:self-auto">
             <button
               type="button"
               onClick={() => setViewMode('audio-text')}
               className={cn(
-                'flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all',
+                'flex flex-1 @2xl:flex-none items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all',
                 viewMode === 'audio-text'
                   ? 'bg-[#111] text-lime shadow-2xs'
                   : 'text-muted-foreground hover:text-foreground',
@@ -180,7 +181,7 @@ export function ScriptPlayer({
               type="button"
               onClick={() => setViewMode('visual-summary')}
               className={cn(
-                'flex flex-1 sm:flex-none items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all',
+                'flex flex-1 @2xl:flex-none items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all',
                 viewMode === 'visual-summary'
                   ? 'bg-lime text-black shadow-2xs font-black'
                   : 'text-muted-foreground hover:text-foreground',
@@ -416,8 +417,8 @@ export function ScriptPlayer({
           </div>
 
           {/* 6. TOMBOL MENGARAH KE UJIAN (DI AKHIR BAB / NASKAH) */}
-          <div className="rounded-3xl border-2 border-[#111] bg-gradient-to-br from-lime/20 via-white to-purple-50 p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-            <div className="space-y-2">
+          <div className="rounded-3xl border-2 border-[#111] bg-gradient-to-br from-lime/20 via-white to-purple-50 p-6 sm:p-8 shadow-xs flex flex-col @5xl:flex-row items-start @5xl:items-center justify-between gap-6">
+            <div className="min-w-0 space-y-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-[#111] px-3 py-1 text-xs font-black text-lime">
                 <Award className="size-3.5" aria-hidden="true" />
                 <span>Naskah Selesai Dipelajari</span>
@@ -436,10 +437,11 @@ export function ScriptPlayer({
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0 w-full sm:w-auto">
+            {/* Buttons sit side by side when both fit, otherwise each wraps to its own full-width row. */}
+            <div className="flex flex-wrap gap-2.5 shrink-0 w-full @5xl:w-auto">
               <Link
                 href="/tunarungu/ujian"
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border-2 border-[#111] bg-lime px-5 py-3.5 text-xs sm:text-sm font-black text-black hover:bg-[#c7f42e] transition-all hover:scale-105 active:scale-95 shadow-xs"
+                className="inline-flex grow items-center justify-center gap-2 rounded-2xl border-2 border-[#111] bg-lime px-5 py-3.5 text-xs sm:text-sm font-black text-black hover:bg-[#c7f42e] transition-all hover:scale-105 active:scale-95 shadow-xs"
               >
                 <Eye className="size-4" aria-hidden="true" />
                 <span>Ujian Visual (Tunarungu)</span>
@@ -447,7 +449,7 @@ export function ScriptPlayer({
               </Link>
               <Link
                 href="/tunanetra/ujian"
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111] px-5 py-3.5 text-xs sm:text-sm font-black text-lime hover:bg-neutral-800 transition-all hover:scale-105 active:scale-95 shadow-xs"
+                className="inline-flex grow items-center justify-center gap-2 rounded-2xl bg-[#111] px-5 py-3.5 text-xs sm:text-sm font-black text-lime hover:bg-neutral-800 transition-all hover:scale-105 active:scale-95 shadow-xs"
               >
                 <Volume2 className="size-4" aria-hidden="true" />
                 <span>Ujian Audio (Tunanetra)</span>

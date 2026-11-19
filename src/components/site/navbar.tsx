@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState, useRef, useEffect } from 'react'
 import { LogOut, User, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { BrandMark } from '@/components/site/brand-mark'
 
 export interface NavLinkItem {
   href: string
@@ -27,21 +28,6 @@ export interface NavbarProps {
   }
   className?: string
 }
-
-export function AlphabetNIcon({ className = 'size-5 text-black' }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M5.25 4.5C5.25 4.08579 5.58579 3.75 6 3.75H8.75C9.07065 3.75 9.36371 3.93339 9.50346 4.2215L14.75 15.0384V4.5C14.75 4.08579 15.0858 3.75 15.5 3.75H18C18.4142 3.75 18.75 4.08579 18.75 4.5V19.5C18.75 19.9142 18.4142 20.25 18 20.25H15.25C14.9293 20.25 14.6363 20.0666 14.4965 19.7785L9.25 8.96162V19.5C9.25 19.9142 8.91421 20.25 8.5 20.25H6C5.58579 20.25 5.25 19.9142 5.25 19.5V4.5Z" />
-    </svg>
-  )
-}
-
-export const PlanetIcon = AlphabetNIcon
 
 export function DarkCapsuleNavbar({ links, action, userMenu, className }: NavbarProps) {
   const pathname = usePathname()
@@ -140,7 +126,7 @@ export function DarkCapsuleNavbar({ links, action, userMenu, className }: Navbar
           className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm transition-transform duration-300 hover:scale-105"
           title="Beranda NusaTara"
         >
-          <AlphabetNIcon className="size-5 sm:size-6 text-black" />
+          <BrandMark className="size-[18px] sm:size-5 text-black" />
         </Link>
 
         {/* Center Nav Links (Desktop) */}
