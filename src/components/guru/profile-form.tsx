@@ -14,12 +14,20 @@ export function ProfileForm() {
     if (teacher) setName(teacher.name)
   }, [teacher])
 
+  const [saveError, setSaveError] = useState('')
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return setStatus('error')
     setStatus('saving')
-    await updateProfile(name.trim())
-    setStatus('saved')
+    setSaveError('')
+    try {
+      await updateProfile(name.trim())
+      setStatus('saved')
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Gagal menyimpan profil.')
+      setStatus('idle')
+    }
   }
 
   return (
@@ -27,6 +35,7 @@ export function ProfileForm() {
       <PageHeader title="Profil" description="Nama ini tampil di setiap modul yang Anda buat." />
       <form onSubmit={submit} className="flex flex-col gap-5 rounded-3xl border border-border bg-white p-6 md:p-8">
         {status === 'saved' && <Alert tone="success" title="Profil tersimpan." />}
+        {saveError && <Alert title="Profil belum tersimpan">{saveError}</Alert>}
         <Field id="nama-guru" label="Nama lengkap" error={status === 'error' ? 'Nama wajib diisi.' : undefined}>
           <input id="nama-guru" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={status === 'error'} className={inputClass} />
         </Field>

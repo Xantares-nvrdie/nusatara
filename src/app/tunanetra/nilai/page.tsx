@@ -1,45 +1,53 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { Award, Volume2, Search, CheckCircle2, Mic } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, Award, CheckCircle2, Loader2, Search, Volume2 } from 'lucide-react'
 import { StudentShell } from '@/components/student/student-shell'
 import { btnLime } from '@/components/site/form'
+import { api, ApiError } from '@/lib/api'
 import { speak, stopSpeaking } from '@/lib/speech'
 
-interface StudentResult {
-  pin: string
-  name: string
-  subject: string
+/** Item of GET /api/exams/:pin/results: scores only, never the answers. */
+interface ExamResult {
+  examTitle: string
+  studentName: string
   score: number
-  date: string
-  feedback: string
+  correctCount: number
+  totalQuestions: number
+  submittedAt: string
 }
 
-const SAMPLE_RESULTS: StudentResult[] = [
-  {
-    pin: '1234',
-    name: 'Ahmad Fauzi',
-    subject: 'IPA — Ekosistem dan Rantai Makanan',
-    score: 90,
-    date: '18 November 2026',
-    feedback: 'Pemahaman materi ekosistem sangat baik. Berhasil menjawab 9 dari 10 soal dengan benar.',
-  },
-  {
-    pin: '1234',
-    name: 'Ahmad Fauzi',
-    subject: 'PPKN — Makna Sila-Sila Pancasila',
-    score: 85,
-    date: '15 November 2026',
-    feedback: 'Mampu menjelaskan implementasi nilai pancasila dengan tepat.',
-  },
-]
+type SearchStatus = 'idle' | 'loading' | 'done' | 'error'
+
+const EMPTY_MESSAGE =
+  'Belum ada nilai untuk nama itu dengan PIN tersebut. Pastikan nama sama persis seperti saat ujian.'
+const OFFLINE_MESSAGE = 'Tidak bisa terhubung ke server. Periksa koneksi internet, lalu coba lagi.'
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function describeResult(r: ExamResult) {
+  return `${r.examTitle}, nilai ${r.score}, benar ${r.correctCount} dari ${r.totalQuestions} soal`
+}
+
+function summarize(items: ExamResult[]) {
+  return `Ditemukan ${items.length} nilai. ${items.map(describeResult).join('. ')}.`
+}
 
 export default function CekNilaiTunanetraPage() {
-  const [pinInput, setPinInput] = useState('')
   const [nameInput, setNameInput] = useState('')
-  const [searched, setSearched] = useState(false)
-  const [results, setResults] = useState<StudentResult[]>([])
+  const [pinInput, setPinInput] = useState('')
+  const [formError, setFormError] = useState('')
+  const [invalid, setInvalid] = useState({ name: false, pin: false })
+  const [status, setStatus] = useState<SearchStatus>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [results, setResults] = useState<ExamResult[]>([])
+
+  // Bumped on every search and on unmount, so a late response never replaces a newer one or speaks on another page.
+  const requestRef = useRef(0)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const pinRef = useRef<HTMLInputElement>(null)
 
   // Shared helper: Indonesian voice, and stays silent while the tab is in the background.
   function speakText(text: string) {
@@ -47,23 +55,60 @@ export default function CekNilaiTunanetraPage() {
   }
 
   // Stop reading when the student leaves this page.
-  useEffect(() => () => stopSpeaking(), [])
+  useEffect(
+    () => () => {
+      requestRef.current += 1
+      stopSpeaking()
+    },
+    [],
+  )
 
-  function handleSearch(e: React.FormEvent) {
+  async function handleSearch(e: React.FormEvent) {
     e.preventDefault()
-    setSearched(true)
+    const name = nameInput.trim()
+    const pin = pinInput.trim()
+    const nameMissing = name.length === 0
+    const pinInvalid = !/^\d{4}$/.test(pin)
+    setInvalid({ name: nameMissing, pin: pinInvalid })
 
-    // Match sample or provide results
-    if (pinInput.trim() === '1234' || nameInput.toLowerCase().includes('ahmad') || pinInput.length > 0) {
-      setResults(SAMPLE_RESULTS)
-      speakText(
-        `Hasil ditemukan untuk PIN ${pinInput || '1234'}. Ditemukan dua riwayat ujian. Nilai pertama: Ujian IPA dengan skor 90 dari 100, predikat sangat baik. Nilai kedua: Ujian PPKN dengan skor 85 dari 100. Selamat atas pencapaian belajarmu!`
+    if (nameMissing || pinInvalid) {
+      const problems: string[] = []
+      if (nameMissing) problems.push('Nama belum diisi')
+      if (pinInvalid) problems.push('PIN harus 4 angka')
+      const message = `${problems.join(' dan ')}.`
+      setFormError(message)
+      speakText(message)
+      const field = nameMissing ? nameRef.current : pinRef.current
+      field?.focus()
+      return
+    }
+
+    setFormError('')
+    requestRef.current += 1
+    const requestId = requestRef.current
+    setStatus('loading')
+    setResults([])
+    speakText('Mencari nilai.')
+
+    try {
+      const { items } = await api<{ items: ExamResult[] }>(
+        `/exams/${pin}/results?name=${encodeURIComponent(name)}`,
       )
-    } else {
-      setResults([])
-      speakText('Maaf, belum ada data ujian dengan PIN tersebut. Pastikan PIN atau nama yang dimasukkan sudah benar.')
+      if (requestId !== requestRef.current) return
+      setResults(items)
+      setStatus('done')
+      speakText(items.length > 0 ? summarize(items) : EMPTY_MESSAGE)
+    } catch (err) {
+      if (requestId !== requestRef.current) return
+      // api() throws ApiError with the HTTP status; a request that never reached the server has no status.
+      const message = err instanceof ApiError && err.status !== undefined ? err.message : OFFLINE_MESSAGE
+      setErrorMsg(message)
+      setStatus('error')
+      speakText(message)
     }
   }
+
+  const loading = status === 'loading'
 
   return (
     <StudentShell>
@@ -79,42 +124,95 @@ export default function CekNilaiTunanetraPage() {
           </div>
           <h1 className="text-2xl font-black md:text-3xl">Cek Hasil & Nilai Ujian</h1>
           <p className="text-sm text-neutral-300">
-            Ketik PIN 4 digit atau nama Anda untuk mendengarkan rekapitulasi nilai dan catatan hasil belajar.
+            Ketik nama Anda dan PIN ujian 4 angka, lalu dengarkan nilai yang Anda dapat.
           </p>
         </div>
 
         {/* Search Form Card */}
         <div className="rounded-3xl border border-black/10 bg-white p-6 shadow-md md:p-8">
-          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-center gap-4">
+          <form onSubmit={handleSearch} noValidate className="flex flex-col gap-4 sm:flex-row sm:items-end">
             <div className="w-full flex-1">
-              <label htmlFor="pin-input" className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
-                Masukkan PIN Ujian (Contoh: 1234)
+              <label htmlFor="name-input" className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                Nama Lengkap (sama seperti saat ujian)
               </label>
               <input
-                id="pin-input"
+                ref={nameRef}
+                id="name-input"
                 type="text"
-                maxLength={6}
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                placeholder="PIN 4 Digit..."
-                className="w-full rounded-2xl border-2 border-neutral-300 px-4 py-3 font-mono text-lg font-bold tracking-widest text-black focus:border-black focus:outline-none"
+                autoComplete="name"
+                maxLength={100}
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                aria-invalid={invalid.name}
+                aria-describedby={formError ? 'search-error' : undefined}
+                placeholder="Nama lengkap..."
+                className="w-full rounded-2xl border-2 border-neutral-300 px-4 py-3 text-lg font-bold text-black focus:border-black focus:outline-none aria-[invalid=true]:border-red-500"
               />
             </div>
 
-            <div className="w-full sm:w-auto self-end">
+            <div className="w-full sm:w-48">
+              <label htmlFor="pin-input" className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                PIN Ujian (4 angka)
+              </label>
+              <input
+                ref={pinRef}
+                id="pin-input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+                aria-invalid={invalid.pin}
+                aria-describedby={formError ? 'search-error' : undefined}
+                placeholder="4 angka"
+                className="w-full rounded-2xl border-2 border-neutral-300 px-4 py-3 font-mono text-lg font-bold tracking-widest text-black focus:border-black focus:outline-none aria-[invalid=true]:border-red-500"
+              />
+            </div>
+
+            <div className="w-full sm:w-auto">
               <button
                 type="submit"
+                disabled={loading}
                 className={`${btnLime} w-full min-h-[52px] px-8 text-sm font-black uppercase`}
               >
-                <Search className="size-4 mr-2" />
-                Cari & Bacakan
+                {loading ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Search className="size-4 mr-2" aria-hidden="true" />
+                )}
+                {loading ? 'Mencari…' : 'Cari & Bacakan'}
               </button>
             </div>
           </form>
+
+          {formError && (
+            <p id="search-error" role="alert" className="mt-4 flex items-center gap-2 text-sm font-bold text-red-600">
+              <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+              {formError}
+            </p>
+          )}
         </div>
 
+        {loading && (
+          <div
+            role="status"
+            className="flex items-center justify-center gap-3 rounded-3xl border border-black/10 bg-white p-8 text-neutral-700 shadow-sm"
+          >
+            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+            <p className="text-sm font-bold">Mencari nilai…</p>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div role="alert" className="flex items-center gap-3 rounded-3xl border border-red-200 bg-red-50 p-6 text-red-950">
+            <AlertCircle className="size-5 shrink-0 text-red-600" aria-hidden="true" />
+            <p className="text-sm font-bold">{errorMsg}</p>
+          </div>
+        )}
+
         {/* Results List */}
-        {searched && (
+        {status === 'done' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-black text-neutral-900">
@@ -123,60 +221,60 @@ export default function CekNilaiTunanetraPage() {
               {results.length > 0 && (
                 <button
                   type="button"
-                  onClick={() =>
-                    speakText(
-                      `Membacakan ulang nilai. Skor IPA Anda adalah 90, dan skor PPKN adalah 85. Evaluasi pemahaman Anda sangat baik.`
-                    )
-                  }
+                  onClick={() => speakText(summarize(results))}
                   className="inline-flex items-center gap-1.5 rounded-full bg-black px-4 py-1.5 text-xs font-bold text-white hover:bg-neutral-800"
                 >
-                  <Volume2 className="size-3.5 text-lime" />
+                  <Volume2 className="size-3.5 text-lime" aria-hidden="true" />
                   Bacakan Semua Ulang
                 </button>
               )}
             </div>
 
             {results.length > 0 ? (
-              <div className="grid gap-4">
-                {results.map((r, idx) => (
-                  <div
-                    key={idx}
+              <ul className="grid gap-4">
+                {results.map((r) => (
+                  <li
+                    key={`${r.submittedAt}-${r.examTitle}`}
                     className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-3xl border border-black/10 bg-white p-6 shadow-sm hover:border-black/25 transition-all"
                   >
                     <div className="space-y-1">
-                      <span className="text-xs font-semibold text-neutral-500">{r.date}</span>
-                      <h3 className="text-lg font-black text-neutral-900">{r.subject}</h3>
-                      <p className="text-xs text-neutral-600 font-medium max-w-xl">{r.feedback}</p>
+                      <span className="text-xs font-semibold text-neutral-500">{formatDate(r.submittedAt)}</span>
+                      <h3 className="text-lg font-black text-neutral-900">{r.examTitle}</h3>
+                      <p className="flex items-center gap-1 text-xs font-bold text-emerald-700">
+                        <CheckCircle2 className="size-3.5 shrink-0" aria-hidden="true" />
+                        Benar {r.correctCount} dari {r.totalQuestions} soal
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-4 shrink-0">
                       <div className="text-right">
                         <span className="block text-3xl font-black text-neutral-900">{r.score}</span>
-                        <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
-                          <CheckCircle2 className="size-3" /> Sangat Baik
-                        </span>
+                        <span className="text-[11px] font-bold text-neutral-500">dari 100</span>
                       </div>
 
                       <button
                         type="button"
                         onClick={() =>
                           speakText(
-                            `Ujian ${r.subject}. Anda mendapatkan nilai ${r.score} dari 100. Catatan: ${r.feedback}`
+                            `${r.examTitle}, ${formatDate(r.submittedAt)}. Nilai ${r.score}, benar ${r.correctCount} dari ${r.totalQuestions} soal.`,
                           )
                         }
                         className="flex size-11 items-center justify-center rounded-2xl bg-neutral-100 text-black hover:bg-lime hover:text-black transition-colors"
-                        title="Dengarkan soal ini"
+                        title="Dengarkan nilai ini"
+                        aria-label={`Dengarkan nilai ${r.examTitle}`}
                       >
-                        <Volume2 className="size-5" />
+                        <Volume2 className="size-5" aria-hidden="true" />
                       </button>
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : (
-              <div className="rounded-3xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-600">
-                <p className="font-semibold text-sm">Tidak ditemukan hasil ujian dengan PIN tersebut.</p>
-                <p className="text-xs mt-1 text-neutral-400">Silakan gunakan PIN demo: <strong>1234</strong></p>
+              <div
+                role="status"
+                className="rounded-3xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-neutral-600"
+              >
+                <p className="font-semibold text-sm">{EMPTY_MESSAGE}</p>
               </div>
             )}
           </div>

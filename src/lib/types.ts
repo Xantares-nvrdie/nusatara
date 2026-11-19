@@ -22,6 +22,8 @@ export type LearningModule = {
   title: string
   teacherName: string
   createdAt: string
+  /** One-line summary from the module list; the full deafVisualSummary only comes with the module detail. */
+  summary?: string
   originalText?: string
   rawContent?: string
   blindAudioScript: string
@@ -46,6 +48,10 @@ export type Exam = {
   isActive?: boolean
   questions: Question[]
   createdAt: string
+  /** From the teacher's exam list (GET /exams), which sends counts instead of the questions. */
+  questionCount?: number
+  submissionCount?: number
+  averageScore?: number | null
 }
 
 export type Submission = {

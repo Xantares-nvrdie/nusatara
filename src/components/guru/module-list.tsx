@@ -9,7 +9,10 @@ import { formatDate } from '@/lib/format'
 import { useStore } from '@/lib/store'
 
 export function ModuleList() {
-  const modules = useStore((s) => s.modules)
+  const allModules = useStore((s) => s.modules)
+  const myIds = useStore((s) => s.myModuleIds)
+  // Only the signed-in teacher's own modules (from GET /modules/mine), not every public module.
+  const modules = useMemo(() => allModules.filter((m) => myIds.includes(m.id)), [allModules, myIds])
   const [q, setQ] = useState('')
   const filtered = useMemo(
     () => modules.filter((m) => m.title.toLowerCase().includes(q.trim().toLowerCase())),
@@ -20,7 +23,7 @@ export function ModuleList() {
     <div data-state={modules.length === 0 ? 'empty' : 'ready'}>
       <PageHeader
         title="Modul"
-        description="Semua materi yang sudah dikonversi menjadi audio dan visual."
+        description="Materi Anda yang sudah dikonversi menjadi audio dan visual."
         action={
           <Link href="/guru/modul/baru" className={btnLime}>
             <Wand2 className="size-4" aria-hidden="true" /> Konversi materi
@@ -67,7 +70,7 @@ export function ModuleList() {
                       <BookOpen className="size-5" aria-hidden="true" />
                     </span>
                     <span className="text-lg font-extrabold leading-snug">{m.title}</span>
-                    <span className="mt-2 line-clamp-2 text-sm text-muted-foreground">{m.deafVisualSummary?.summary || 'Klik untuk melihat detail materi.'}</span>
+                    <span className="mt-2 line-clamp-2 text-sm text-muted-foreground">{m.deafVisualSummary?.summary || m.summary || 'Klik untuk melihat detail materi.'}</span>
                     <span className="mt-auto flex items-center justify-between pt-5 text-sm text-muted-foreground">
                       {formatDate(m.createdAt)}
                       <ArrowRight className="size-4 text-foreground transition-transform group-hover:translate-x-1" aria-hidden="true" />

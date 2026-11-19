@@ -1,3 +1,4 @@
+import type { PracticeQuestionData } from "@/backend/modules/practice/model";
 import type { AnswerKey, DeafVisualSummary, ExamQuestionInput } from "@/backend/utils/model";
 
 /** Shared password for every demo account (documented for judges in the proposal). */
@@ -8,6 +9,8 @@ export type SeedModule = {
     rawContent: string;
     blindAudioScript: string;
     deafVisualSummary: DeafVisualSummary;
+    /** Ungraded "Latihan Suara" questions. Kept different from the exam questions so practice doesn't leak the exam. */
+    practice: PracticeQuestionData[];
     exam: {
         title: string;
         /** Fixed so the demo script can say "masukkan PIN 1234". Falls back to a random PIN if taken. */
@@ -88,6 +91,27 @@ Sebagai rangkuman, fotosintesis terjadi di daun dengan bantuan klorofil. Bahanny
             { term: "Karbon dioksida", definition: "Gas di udara yang dipakai tumbuhan untuk membuat makanan." },
         ],
     },
+    practice: [
+        {
+            question: "Bahan apa yang diserap akar dari tanah untuk fotosintesis?",
+            options: { A: "Air", B: "Oksigen", C: "Gula", D: "Cahaya" },
+            correctAnswer: "A",
+            explanation: "Akar menyerap air dari tanah. Air itu dibawa ke daun untuk fotosintesis.",
+        },
+        {
+            question: "Lubang sangat kecil di daun, tempat udara keluar masuk, disebut apa?",
+            options: { A: "Klorofil", B: "Stomata", C: "Akar", D: "Batang" },
+            correctAnswer: "B",
+            explanation:
+                "Stomata adalah lubang kecil di daun. Lewat stomata, karbon dioksida masuk dan oksigen keluar.",
+        },
+        {
+            question: "Gula yang dibuat tumbuhan sebagai makanannya disebut apa?",
+            options: { A: "Garam", B: "Protein", C: "Glukosa", D: "Lemak" },
+            correctAnswer: "C",
+            explanation: "Glukosa adalah gula hasil fotosintesis. Glukosa menjadi makanan bagi tumbuhan.",
+        },
+    ],
     exam: {
         title: "Ulangan Harian IPA: Fotosintesis",
         pin: "1234",
@@ -201,6 +225,33 @@ Sebagai rangkuman, siklus air punya empat tahap: penguapan, pengembunan, hujan, 
             { term: "Infiltrasi", definition: "Air hujan meresap masuk ke dalam tanah." },
         ],
     },
+    practice: [
+        {
+            question: "Apa yang membuat air laut menguap menjadi uap air?",
+            options: { A: "Cahaya bulan", B: "Panas matahari", C: "Angin malam", D: "Cahaya bintang" },
+            correctAnswer: "B",
+            explanation: "Panas matahari membuat air di laut, sungai, dan danau menguap menjadi uap air.",
+        },
+        {
+            question: "Uap air mendingin lalu berubah menjadi titik-titik air di awan. Proses ini disebut apa?",
+            options: { A: "Evaporasi", B: "Infiltrasi", C: "Kondensasi", D: "Presipitasi" },
+            correctAnswer: "C",
+            explanation:
+                "Kondensasi adalah uap air yang mendingin lalu berubah menjadi titik-titik air yang membentuk awan.",
+        },
+        {
+            question: "Mengapa perjalanan air ini disebut siklus?",
+            options: {
+                A: "Karena airnya selalu hilang",
+                B: "Karena hanya terjadi di laut",
+                C: "Karena hanya terjadi siang hari",
+                D: "Karena prosesnya berulang terus-menerus",
+            },
+            correctAnswer: "D",
+            explanation:
+                "Air menguap, menjadi awan, turun sebagai hujan, lalu menguap lagi. Karena berulang terus, disebut siklus.",
+        },
+    ],
     exam: {
         title: "Kuis IPA: Siklus Air",
         pin: "2345",
@@ -303,6 +354,28 @@ Sebagai rangkuman, pecahan menunjukkan bagian dari benda utuh. Pembilang adalah 
             { term: "Penyebut", definition: "Angka di bawah garis, banyak semua bagian." },
         ],
     },
+    practice: [
+        {
+            question: "Sebuah pizza dipotong 4 bagian sama besar. Kamu makan 2 bagian. Berapa bagian yang kamu makan?",
+            options: { A: "Dua per empat", B: "Satu per empat", C: "Tiga per empat", D: "Empat per empat" },
+            correctAnswer: "A",
+            explanation: "Kamu makan 2 dari 4 bagian, jadi dua per empat. Dua per empat sama dengan setengah.",
+        },
+        {
+            question: "Mana pecahan yang paling kecil?",
+            options: { A: "Setengah", B: "Sepertiga", C: "Seperempat", D: "Seperlima" },
+            correctAnswer: "D",
+            explanation:
+                "Jika pembilangnya sama-sama satu, pecahan dengan penyebut paling besar adalah yang paling kecil. Seperlima paling kecil.",
+        },
+        {
+            question: "Satu per empat ditambah satu per empat hasilnya berapa?",
+            options: { A: "Satu per delapan", B: "Dua per empat", C: "Satu", D: "Tiga per empat" },
+            correctAnswer: "B",
+            explanation:
+                "Penyebutnya sama, jadi pembilangnya dijumlah: satu tambah satu sama dengan dua. Hasilnya dua per empat.",
+        },
+    ],
     exam: {
         title: "Latihan Matematika: Pecahan",
         pin: "3456",
@@ -398,6 +471,27 @@ Sebagai rangkuman, Indonesia kaya akan suku dan budaya. Kita menjaga persatuan d
             { term: "Bhinneka Tunggal Ika", definition: "Berbeda-beda tetapi tetap satu." },
         ],
     },
+    practice: [
+        {
+            question: "Indonesia memiliki lebih dari berapa suku bangsa?",
+            options: { A: "Seratus", B: "Lima ratus", C: "Seribu tiga ratus", D: "Sepuluh" },
+            correctAnswer: "C",
+            explanation: "Indonesia memiliki lebih dari seribu tiga ratus suku bangsa, dari Sabang sampai Merauke.",
+        },
+        {
+            question: "Dalam materi ini, kain tenun ikat berasal dari provinsi mana?",
+            options: { A: "Papua", B: "Nusa Tenggara Timur", C: "Maluku", D: "DKI Jakarta" },
+            correctAnswer: "B",
+            explanation:
+                "Kain tenun ikat dari Nusa Tenggara Timur ditenun dengan tangan, dan setiap daerah punya motifnya sendiri.",
+        },
+        {
+            question: "Rumah adat Honai yang bulat dengan atap jerami membuat penghuninya merasa bagaimana?",
+            options: { A: "Tetap hangat", B: "Tetap basah", C: "Kepanasan", D: "Kedinginan" },
+            correctAnswer: "A",
+            explanation: "Honai berbentuk bulat dengan atap jerami, sehingga penghuninya tetap hangat.",
+        },
+    ],
     exam: {
         title: "Kuis IPS: Keragaman Budaya",
         pin: "4567",

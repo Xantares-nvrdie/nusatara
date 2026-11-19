@@ -25,6 +25,7 @@ const ModuleListItem = t.Object({
     id: t.String(),
     title: t.String(),
     teacherName: t.String(),
+    summary: t.String({ description: "Inti materi (deafVisualSummary.summary), untuk kartu modul" }),
     createdAt: t.Date(),
 });
 

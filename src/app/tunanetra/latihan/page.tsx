@@ -1,45 +1,97 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Headphones, Volume2, Mic, CheckCircle2, XCircle, RotateCcw, ArrowRight } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Headphones,
+  Loader2,
+  Mic,
+  RotateCcw,
+  Volume2,
+  XCircle,
+} from 'lucide-react'
 import { StudentShell } from '@/components/student/student-shell'
 import { btnLime } from '@/components/site/form'
-import { speak, stopSpeaking } from '@/lib/speech'
+import { api, ApiError } from '@/lib/api'
+import { getRecognition, speak, stopSpeaking } from '@/lib/speech'
+import { LETTERS, type Letter } from '@/lib/types'
+
+/** Item of GET /api/practice. Practice is ungraded, so the answer key and explanation come with it. */
+interface PracticeItem {
+  id: string
+  moduleId: string
+  moduleTitle: string
+  question: string
+  options: Record<Letter, string>
+  correctAnswer: Letter
+  explanation: string
+}
 
 interface PracticeQuestion {
-  id: number
+  id: string
+  moduleTitle: string
   question: string
   options: string[]
   answerIndex: number
   explanation: string
 }
 
-const SAMPLE_QUESTIONS: PracticeQuestion[] = [
-  {
-    id: 1,
-    question: 'Hewan yang memakan tumbuhan dan biji-bijian termasuk dalam kelompok hewan apa?',
-    options: ['Karnivora', 'Herbivora', 'Omnivora', 'Insektivora'],
-    answerIndex: 1,
-    explanation: 'Herbivora adalah sebutan untuk hewan pemakan tumbuhan.',
-  },
-  {
-    id: 2,
-    question: 'Berapa jumlah sila dalam dasar negara kita, Pancasila?',
-    options: ['Tiga sila', 'Empat sila', 'Lima sila', 'Enam sila'],
-    answerIndex: 2,
-    explanation: 'Pancasila terdiri dari lima sila yang menjadi pedoman hidup berbangsa.',
-  },
-  {
-    id: 3,
-    question: 'Organ tubuh manusia yang berfungsi memompa darah ke seluruh tubuh adalah?',
-    options: ['Paru-paru', 'Jantung', 'Hati', 'Lambung'],
-    answerIndex: 1,
-    explanation: 'Jantung bertugas memompa darah yang mengandung oksigen ke seluruh tubuh.',
-  },
-]
+type LoadStatus = 'loading' | 'error' | 'empty' | 'ready'
+
+const PRACTICE_LIMIT = 10
+const ORDINALS = ['pertama', 'kedua', 'ketiga', 'keempat']
+// How id-ID speech recognition may write a spoken option letter.
+const SPOKEN_LETTERS = new Map([
+  ['a', 0],
+  ['b', 1],
+  ['be', 1],
+  ['c', 2],
+  ['ce', 2],
+  ['d', 3],
+  ['de', 3],
+])
+
+// Shared helper: Indonesian voice, and stays silent while the tab is in the background.
+function speakText(text: string) {
+  speak(text, { rate: 0.95 })
+}
+
+function toQuestion(item: PracticeItem): PracticeQuestion {
+  return {
+    id: item.id,
+    moduleTitle: item.moduleTitle,
+    question: item.question,
+    options: LETTERS.map((l) => item.options[l]),
+    answerIndex: LETTERS.indexOf(item.correctAnswer),
+    explanation: item.explanation,
+  }
+}
+
+function loadErrorMessage(err: unknown) {
+  // api() throws ApiError with the HTTP status; a request that never reached the server has no status.
+  if (err instanceof ApiError && err.status !== undefined) return `Soal latihan gagal dimuat. ${err.message}`
+  return 'Tidak bisa terhubung ke server. Periksa koneksi internet, lalu coba lagi.'
+}
+
+/** Option index for a spoken answer: the option text, a letter (A–D) or an ordinal word. -1 when nothing matches. */
+function matchSpokenOption(transcript: string, options: string[]) {
+  const t = transcript.toLowerCase().trim()
+  const exact = options.findIndex((opt) => opt.toLowerCase() === t)
+  if (exact >= 0) return exact
+  const letter = t.split(/[^a-z]+/).find((w) => SPOKEN_LETTERS.has(w))
+  if (letter) return SPOKEN_LETTERS.get(letter) ?? -1
+  const ordinal = ORDINALS.findIndex((w) => t.includes(w))
+  if (ordinal >= 0) return ordinal
+  return options.findIndex((opt) => t.includes(opt.toLowerCase()))
+}
 
 export default function LatihanSuaraPage() {
+  const [status, setStatus] = useState<LoadStatus>('loading')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [questions, setQuestions] = useState<PracticeQuestion[]>([])
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selectedOpt, setSelectedOpt] = useState<number | null>(null)
   const [isAnswered, setIsAnswered] = useState(false)
@@ -48,38 +100,84 @@ export default function LatihanSuaraPage() {
   const [speechFeedback, setSpeechFeedback] = useState('')
   const [finished, setFinished] = useState(false)
 
-  const currentQ = SAMPLE_QUESTIONS[currentIdx]
+  // Bumped on every load and on unmount, so a late response never replaces a newer set or speaks on another page.
+  const requestRef = useRef(0)
+  const recognitionRef = useRef<ReturnType<typeof getRecognition>>(null)
+  const retryRef = useRef<HTMLButtonElement>(null)
 
-  // Shared helper: Indonesian voice, and stays silent while the tab is in the background.
-  function speakText(text: string) {
-    speak(text, { rate: 0.95 })
-  }
+  const total = questions.length
+  const currentQ = status === 'ready' ? questions[currentIdx] : undefined
 
-  // Stop reading when the student leaves this page (e.g. taps another menu item).
-  useEffect(() => () => stopSpeaking(), [])
+  // Fetches a new random set and starts from the first question.
+  const loadQuestions = useCallback(async () => {
+    requestRef.current += 1
+    const requestId = requestRef.current
+    recognitionRef.current?.abort()
+    setStatus('loading')
+    setQuestions([])
+    setCurrentIdx(0)
+    setSelectedOpt(null)
+    setIsAnswered(false)
+    setScore(0)
+    setFinished(false)
+    setSpeechFeedback('')
+    speakText('Memuat soal latihan.')
 
-  // Speak question when loaded
-  useEffect(() => {
-    if (!finished && currentQ) {
-      const qText = `Soal nomor ${currentIdx + 1}. ${currentQ.question}. Pilihan A: ${currentQ.options[0]}. Pilihan B: ${currentQ.options[1]}. Pilihan C: ${currentQ.options[2]}. Pilihan D: ${currentQ.options[3]}. Tekan tombol A, B, C, atau D pada keyboard untuk menjawab.`
-      speakText(qText)
+    try {
+      const { items } = await api<{ items: PracticeItem[] }>(`/practice?limit=${PRACTICE_LIMIT}`)
+      if (requestId !== requestRef.current) return
+      setQuestions(items.map(toQuestion))
+      if (items.length > 0) {
+        setStatus('ready')
+      } else {
+        setStatus('empty')
+        speakText('Belum ada soal latihan dari guru.')
+      }
+    } catch (err) {
+      if (requestId !== requestRef.current) return
+      const message = loadErrorMessage(err)
+      setErrorMsg(message)
+      setStatus('error')
+      speakText(`${message} Tekan tombol Coba lagi.`)
     }
-  }, [currentIdx, finished])
+  }, [])
+
+  // Load the first set. Leaving the page stops reading, the microphone and any pending request.
+  useEffect(() => {
+    void loadQuestions()
+    return () => {
+      requestRef.current += 1
+      recognitionRef.current?.abort()
+      stopSpeaking()
+    }
+  }, [loadQuestions])
+
+  // Put keyboard focus on "Coba lagi" so Enter or Space retries right away.
+  useEffect(() => {
+    if (status === 'error') retryRef.current?.focus()
+  }, [status])
+
+  // Read each question once it is on screen (only after the set has loaded).
+  useEffect(() => {
+    if (finished || !currentQ) return
+    speakText(
+      `Soal nomor ${currentIdx + 1}. ${currentQ.question}. Pilihan A: ${currentQ.options[0]}. Pilihan B: ${currentQ.options[1]}. Pilihan C: ${currentQ.options[2]}. Pilihan D: ${currentQ.options[3]}. Tekan tombol A, B, C, atau D pada keyboard untuk menjawab.`,
+    )
+  }, [currentQ, currentIdx, finished])
 
   // Keyboard shortcut listener
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (finished) return
+      if (finished || !currentQ) return
+      // Leave browser shortcuts such as Ctrl/Cmd+R and Ctrl/Cmd+C alone.
+      if (e.metaKey || e.ctrlKey || e.altKey) return
 
       const key = e.key.toUpperCase()
       if (['A', 'B', 'C', 'D'].includes(key) && !isAnswered) {
-        const optIdx = key.charCodeAt(0) - 65
-        handleAnswer(optIdx)
+        handleAnswer(key.charCodeAt(0) - 65)
       } else if (key === 'R' || e.code === 'Space') {
         e.preventDefault()
-        if (currentQ) {
-          speakText(`Mengulang soal: ${currentQ.question}.`)
-        }
+        speakText(`Mengulang soal: ${currentQ.question}.`)
       } else if (key === 'V') {
         e.preventDefault()
         startVoiceRecognition()
@@ -91,87 +189,75 @@ export default function LatihanSuaraPage() {
   }, [currentIdx, isAnswered, finished, currentQ])
 
   function handleAnswer(index: number) {
-    if (isAnswered) return
+    if (isAnswered || !currentQ) return
+    // A late voice result must not answer the same question twice.
+    recognitionRef.current?.abort()
     setSelectedOpt(index)
     setIsAnswered(true)
 
-    const isCorrect = index === currentQ.answerIndex
-    if (isCorrect) {
+    if (index === currentQ.answerIndex) {
       setScore((prev) => prev + 1)
       speakText(`Hebat! Jawaban Anda benar. ${currentQ.explanation}. Tekan tombol lanjut untuk ke soal berikutnya.`)
     } else {
-      const correctLetter = String.fromCharCode(65 + currentQ.answerIndex)
-      speakText(`Jawaban belum tepat. Jawaban yang benar adalah pilihan ${correctLetter}, yaitu ${currentQ.options[currentQ.answerIndex]}. ${currentQ.explanation}. Tekan tombol lanjut.`)
+      const correctLetter = LETTERS[currentQ.answerIndex]
+      speakText(
+        `Jawaban belum tepat. Jawaban yang benar adalah pilihan ${correctLetter}, yaitu ${currentQ.options[currentQ.answerIndex]}. ${currentQ.explanation}. Tekan tombol lanjut.`,
+      )
     }
   }
 
   function handleNext() {
-    if (currentIdx + 1 < SAMPLE_QUESTIONS.length) {
+    if (currentIdx + 1 < total) {
       setCurrentIdx((prev) => prev + 1)
       setSelectedOpt(null)
       setIsAnswered(false)
       setSpeechFeedback('')
     } else {
       setFinished(true)
-      const finalScore = score + (selectedOpt === currentQ.answerIndex ? 1 : 0)
-      speakText(`Latihan selesai! Anda berhasil menjawab ${finalScore} dari ${SAMPLE_QUESTIONS.length} pertanyaan dengan benar. Selamat!`)
+      // `score` already counts the last answer: handleAnswer adds the point right away.
+      speakText(`Latihan selesai! Anda berhasil menjawab ${score} dari ${total} pertanyaan dengan benar. Selamat!`)
     }
   }
 
-  function handleRestart() {
-    setCurrentIdx(0)
-    setSelectedOpt(null)
-    setIsAnswered(false)
-    setScore(0)
-    setFinished(false)
-    setSpeechFeedback('')
-  }
-
   function startVoiceRecognition() {
-    if (typeof window === 'undefined') return
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognition) {
+    const q = currentQ
+    if (!q) return
+    const recognition = getRecognition()
+    if (!recognition) {
       speakText('Peramban Anda belum mendukung pengenalan suara. Silakan gunakan tombol keyboard A sampai D.')
       return
     }
 
+    // Don't let the microphone pick up the question being read aloud.
+    stopSpeaking()
+    recognitionRef.current?.abort()
+    recognitionRef.current = recognition
+    setIsListening(true)
+    setSpeechFeedback('Mendengarkan suara Anda...')
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.toLowerCase()
+      setSpeechFeedback(`Suara terdeteksi: "${transcript}"`)
+      const optIdx = matchSpokenOption(transcript, q.options)
+      if (optIdx >= 0) {
+        handleAnswer(optIdx)
+      } else {
+        speakText(`Tidak mengenali pilihan dari kata ${transcript}. Silakan sebutkan A, B, C, atau D.`)
+      }
+    }
+
+    recognition.onerror = (event) => {
+      setIsListening(false)
+      // We abort the microphone ourselves after an answer or when leaving the page; that isn't a failure.
+      if (event.error !== 'aborted') setSpeechFeedback('Suara tidak terdengar jelas.')
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+      if (recognitionRef.current === recognition) recognitionRef.current = null
+    }
+
     try {
-      const recognition = new SpeechRecognition()
-      recognition.lang = 'id-ID'
-      recognition.interimResults = false
-
-      recognition.onstart = () => {
-        setIsListening(true)
-        setSpeechFeedback('Mendengarkan suara Anda...')
-      }
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript.toLowerCase()
-        setSpeechFeedback(`Suara terdeteksi: "${transcript}"`)
-
-        if (transcript.includes('a') || transcript.includes('pertama') || transcript.includes(currentQ.options[0].toLowerCase())) {
-          handleAnswer(0)
-        } else if (transcript.includes('b') || transcript.includes('kedua') || transcript.includes(currentQ.options[1].toLowerCase())) {
-          handleAnswer(1)
-        } else if (transcript.includes('c') || transcript.includes('ketiga') || transcript.includes(currentQ.options[2].toLowerCase())) {
-          handleAnswer(2)
-        } else if (transcript.includes('d') || transcript.includes('keempat') || transcript.includes(currentQ.options[3].toLowerCase())) {
-          handleAnswer(3)
-        } else {
-          speakText(`Tidak mengenali pilihan dari kata ${transcript}. Silakan sebutkan A, B, C, atau D.`)
-        }
-      }
-
-      recognition.onerror = () => {
-        setIsListening(false)
-        setSpeechFeedback('Suara tidak terdengar jelas.')
-      }
-
-      recognition.onend = () => {
-        setIsListening(false)
-      }
-
       recognition.start()
     } catch {
       setIsListening(false)
@@ -198,7 +284,51 @@ export default function LatihanSuaraPage() {
           </p>
         </div>
 
-        {finished ? (
+        {status === 'loading' && (
+          <div
+            role="status"
+            className="flex items-center justify-center gap-3 rounded-3xl border border-black/10 bg-white p-10 text-center shadow-md"
+          >
+            <Loader2 className="size-5 animate-spin text-neutral-700" aria-hidden="true" />
+            <p className="text-base font-bold text-neutral-700">Memuat soal latihan…</p>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div
+            role="alert"
+            className="flex flex-col items-center gap-4 rounded-3xl border border-red-200 bg-red-50 p-10 text-center"
+          >
+            <AlertCircle className="size-8 text-red-600" aria-hidden="true" />
+            <p className="max-w-xl text-base font-bold text-red-950">{errorMsg}</p>
+            <button
+              ref={retryRef}
+              type="button"
+              onClick={() => void loadQuestions()}
+              className={`${btnLime} px-7 py-3 text-sm`}
+            >
+              <RotateCcw className="size-4" aria-hidden="true" /> Coba lagi
+            </button>
+          </div>
+        )}
+
+        {status === 'empty' && (
+          <div
+            role="status"
+            className="flex flex-col items-center gap-4 rounded-3xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center"
+          >
+            <p className="text-base font-semibold text-neutral-700">Belum ada soal latihan dari guru.</p>
+            <button
+              type="button"
+              onClick={() => void loadQuestions()}
+              className="inline-flex items-center gap-2 rounded-full border-2 border-black bg-white px-6 py-3 text-sm font-bold text-black transition-all hover:bg-neutral-100"
+            >
+              <RotateCcw className="size-4" aria-hidden="true" /> Muat ulang
+            </button>
+          </div>
+        )}
+
+        {status === 'ready' && finished && (
           /* Finished State */
           <div className="flex flex-col items-center justify-center rounded-3xl border border-black/10 bg-white p-10 text-center shadow-lg">
             <div className="flex size-16 items-center justify-center rounded-full bg-lime text-black font-black text-2xl mb-4">
@@ -206,32 +336,37 @@ export default function LatihanSuaraPage() {
             </div>
             <h2 className="text-3xl font-black text-neutral-900">Latihan Selesai!</h2>
             <p className="mt-2 text-base text-neutral-600">
-              Skor Anda: <strong className="text-black font-black text-xl">{score}</strong> dari {SAMPLE_QUESTIONS.length} soal terjawab benar.
+              Skor Anda: <strong className="text-black font-black text-xl">{score}</strong> dari {total} soal terjawab benar.
             </p>
             <div className="mt-8 flex gap-4">
               <button
                 type="button"
-                onClick={handleRestart}
+                onClick={() => void loadQuestions()}
                 className="inline-flex items-center gap-2 rounded-full border-2 border-black bg-white px-6 py-3 text-sm font-bold text-black transition-all hover:bg-neutral-100"
               >
-                <RotateCcw className="size-4" /> Ulangi Latihan
+                <RotateCcw className="size-4" /> Latihan Lagi
               </button>
               <Link href="/tunanetra/ujian" className={`${btnLime} px-7 py-3 text-sm`}>
                 Lanjut ke Ujian Resmi (PIN)
               </Link>
             </div>
           </div>
-        ) : (
+        )}
+
+        {!finished && currentQ && (
           /* Question Box */
           <div className="rounded-3xl border border-black/10 bg-white p-6 shadow-md md:p-8 space-y-6">
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-4">
-              <span className="text-sm font-bold text-neutral-500">
-                Pertanyaan {currentIdx + 1} dari {SAMPLE_QUESTIONS.length}
-              </span>
+            <div className="flex items-center justify-between gap-4 border-b border-neutral-100 pb-4">
+              <div className="min-w-0">
+                <span className="block text-sm font-bold text-neutral-500">
+                  Pertanyaan {currentIdx + 1} dari {total}
+                </span>
+                <span className="block truncate text-xs text-neutral-500">Dari modul: {currentQ.moduleTitle}</span>
+              </div>
               <button
                 type="button"
                 onClick={() => speakText(`Soal: ${currentQ.question}`)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-bold text-neutral-800 hover:bg-neutral-200"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-neutral-100 px-3.5 py-1.5 text-xs font-bold text-neutral-800 hover:bg-neutral-200"
               >
                 <Volume2 className="size-3.5" /> Ulang Suara
               </button>
@@ -244,7 +379,7 @@ export default function LatihanSuaraPage() {
             {/* Options */}
             <div className="grid gap-3 sm:grid-cols-2 pt-2">
               {currentQ.options.map((opt, i) => {
-                const letter = String.fromCharCode(65 + i)
+                const letter = LETTERS[i]
                 const isSelected = selectedOpt === i
                 const isCorrect = i === currentQ.answerIndex
 
@@ -256,7 +391,7 @@ export default function LatihanSuaraPage() {
 
                 return (
                   <button
-                    key={i}
+                    key={letter}
                     type="button"
                     disabled={isAnswered}
                     onClick={() => handleAnswer(i)}

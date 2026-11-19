@@ -24,7 +24,7 @@ export function ModuleCards({ base }: { base: '/tunarungu/kartu' | '/tunanetra/m
             </div>
             <h2 className="text-xl font-extrabold">{m.title}</h2>
             <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
-              {m.deafVisualSummary?.summary || 'Klik untuk mempelajari materi ini.'}
+              {m.deafVisualSummary?.summary || m.summary || 'Klik untuk mempelajari materi ini.'}
             </p>
             <p className="mt-auto text-xs font-bold uppercase tracking-widest text-muted-foreground">
               {m.deafVisualSummary?.sections?.length ? `${m.deafVisualSummary.sections.length} bagian · ` : ''}

@@ -2,7 +2,7 @@ import { and, count, desc, eq, ilike, sql } from "drizzle-orm";
 import { status } from "elysia";
 import { extractText } from "unpdf";
 import type { DeafVisualSummary } from "@/backend/utils/model";
-import { escapeLike, toOffset } from "@/backend/utils/query";
+import { escapeLike, pageParams, toOffset } from "@/backend/utils/query";
 import { db } from "@/db";
 import { learningModules, user } from "@/db/schema";
 import { convertMaterial, type MaterialSource } from "./converter";
@@ -23,15 +23,21 @@ const MIN_PDF_TEXT_CHARS = 100;
 const TEXT_MIME_TYPES = new Set(["text/plain", "text/markdown"]);
 const PDF_SIGNATURE = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
 
-const listColumns = {
+const baseColumns = {
     id: learningModules.id,
     title: learningModules.title,
     teacherName: user.name,
     createdAt: learningModules.createdAt,
 };
 
+/** List items carry only the one-line summary from the visual summary, not the module bodies. */
+const listColumns = {
+    ...baseColumns,
+    summary: sql<string>`${learningModules.deafVisualSummary} ->> 'summary'`,
+};
+
 const detailColumns = {
-    ...listColumns,
+    ...baseColumns,
     rawContent: learningModules.rawContent,
     blindAudioScript: learningModules.blindAudioScript,
     deafVisualSummary: learningModules.deafVisualSummary,
@@ -152,8 +158,9 @@ export const LearningModuleService = {
     },
 
     /** Lightweight list (no content bodies) to keep payloads small on low-bandwidth connections. */
-    async list({ page = 1, pageSize = 10, q }: ListModulesQuery, teacherId?: string) {
-        const search = q?.trim();
+    async list(query: ListModulesQuery, teacherId?: string) {
+        const { page, pageSize } = pageParams(query.page, query.pageSize);
+        const search = query.q?.trim();
         const where = and(
             teacherId ? eq(learningModules.teacherId, teacherId) : undefined,
             search ? ilike(learningModules.title, `%${escapeLike(search)}%`) : undefined,

@@ -1,12 +1,14 @@
 import { and, count, desc, eq } from "drizzle-orm";
-import { toOffset } from "@/backend/utils/query";
+import { pageParams, toOffset } from "@/backend/utils/query";
 import { db } from "@/db";
 import { exams, submissions } from "@/db/schema";
 import type { ListSubmissionsQuery } from "./model";
 
 export const SubmissionService = {
     /** Scores for the teacher's own exams only; other teachers' exam ids simply return nothing. */
-    async listForTeacher(teacherId: string, { page = 1, pageSize = 10, examId }: ListSubmissionsQuery) {
+    async listForTeacher(teacherId: string, query: ListSubmissionsQuery) {
+        const { page, pageSize } = pageParams(query.page, query.pageSize);
+        const { examId } = query;
         const where = and(eq(exams.teacherId, teacherId), examId ? eq(submissions.examId, examId) : undefined);
 
         const [[{ total }], items] = await Promise.all([

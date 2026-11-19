@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { status } from "elysia";
 import type { AnswerKey, ExamQuestion, SubmissionAnswer } from "@/backend/utils/model";
-import { isUniqueViolation, toOffset } from "@/backend/utils/query";
+import { isUniqueViolation, pageParams, toOffset } from "@/backend/utils/query";
 import { db } from "@/db";
 import { EXAM_ACTIVE_PIN_INDEX, exams, learningModules, submissions } from "@/db/schema";
 import type { CreateExamBody, ListExamsQuery, ResultsQuery, SubmitExamBody } from "./model";
@@ -127,7 +127,8 @@ export const ExamService = {
     },
 
     /** Teacher dashboard: exams with submission count and average score, aggregated in SQL. */
-    async listForTeacher(teacherId: string, { page = 1, pageSize = 10 }: ListExamsQuery) {
+    async listForTeacher(teacherId: string, query: ListExamsQuery) {
+        const { page, pageSize } = pageParams(query.page, query.pageSize);
         const where = eq(exams.teacherId, teacherId);
         const [[{ total }], items] = await Promise.all([
             db.select({ total: count() }).from(exams).where(where),

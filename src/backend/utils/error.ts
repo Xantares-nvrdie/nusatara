@@ -25,6 +25,13 @@ const errorHandler = new Elysia({ name: "error-handler" }).onError({ as: "global
         case "UNKNOWN":
             console.error("[api] Unhandled error:", error);
             return status(500, { message: "Terjadi kesalahan pada server. Silakan coba lagi." });
+        default:
+            // status(...) errors arrive with their numeric HTTP code and keep their own response.
+            if (typeof code === "number") return;
+            // Anything else carries its own `code`, e.g. a Postgres SQLSTATE like "42P01". Without this branch
+            // Elysia returned the raw driver message (SQL details) to the client as text/plain.
+            console.error("[api] Unhandled error:", error);
+            return status(500, { message: "Terjadi kesalahan pada server. Silakan coba lagi." });
     }
 });
 

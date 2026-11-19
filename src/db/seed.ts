@@ -8,14 +8,15 @@ import { ExamModel } from "@/backend/modules/exams/model";
 import { ExamService } from "@/backend/modules/exams/service";
 import { LearningModuleModel } from "@/backend/modules/learning-modules/model";
 import { LearningModuleService } from "@/backend/modules/learning-modules/service";
+import { PracticeQuestionInput } from "@/backend/modules/practice/model";
 import { isUniqueViolation } from "@/backend/utils/query";
 import { db } from "./index";
-import { account, EXAM_ACTIVE_PIN_INDEX, exams, learningModules, user } from "./schema";
+import { account, EXAM_ACTIVE_PIN_INDEX, exams, learningModules, practiceQuestions, user } from "./schema";
 import { DEMO_PASSWORD, SEED_TEACHERS } from "./seed-data";
 
 /**
  * Demo seed: `bun run db:seed`.
- * Idempotent. Re-running resets the demo teachers' modules, exams, submissions and sign logs,
+ * Idempotent. Re-running resets the demo teachers' modules, practice questions, exams and submissions,
  * and resets their password to DEMO_PASSWORD. Data of other accounts is never touched.
  */
 
@@ -28,8 +29,9 @@ function assertValid(schema: TSchema, value: unknown, label: string) {
 
 function validateSeedData() {
     for (const teacher of SEED_TEACHERS) {
-        for (const { exam, ...module } of teacher.modules) {
+        for (const { exam, practice, ...module } of teacher.modules) {
             assertValid(LearningModuleModel.createBody, module, module.title);
+            for (const p of practice) assertValid(PracticeQuestionInput, p, `${module.title} (latihan)`);
             assertValid(ExamModel.createBody, { title: exam.title, questions: exam.questions }, exam.title);
             for (const s of exam.submissions) {
                 if (s.answers.length !== exam.questions.length) {
@@ -98,6 +100,7 @@ async function main() {
     const accounts: { email: string; name: string; status: string }[] = [];
     const examRows: { teacher: string; title: string; pin: string; preferred: string; submissions: number }[] = [];
     let moduleCount = 0;
+    let practiceCount = 0;
 
     for (const seed of SEED_TEACHERS) {
         const teacher = await upsertTeacher(seed.name, seed.email);
@@ -107,9 +110,15 @@ async function main() {
         await db.delete(exams).where(eq(exams.teacherId, teacher.id));
         await db.delete(learningModules).where(eq(learningModules.teacherId, teacher.id));
 
-        for (const { exam, ...moduleData } of seed.modules) {
+        for (const { exam, practice, ...moduleData } of seed.modules) {
             const created = await LearningModuleService.create(teacher, moduleData);
             moduleCount++;
+
+            // Old practice rows went with the old module (ON DELETE CASCADE), so a plain insert stays idempotent.
+            if (practice.length > 0) {
+                await db.insert(practiceQuestions).values(practice.map((p) => ({ ...p, moduleId: created.id })));
+                practiceCount += practice.length;
+            }
 
             const row = await insertExam(
                 {
@@ -139,7 +148,7 @@ async function main() {
         }
     }
 
-    console.log(`\n✅ Selesai: ${moduleCount} modul, ${examRows.length} ujian.\n`);
+    console.log(`\n✅ Selesai: ${moduleCount} modul, ${examRows.length} ujian, ${practiceCount} soal latihan.\n`);
     console.log(`👤 Akun guru (password: ${DEMO_PASSWORD})`);
     console.table(accounts);
     console.log("📝 PIN ujian aktif");

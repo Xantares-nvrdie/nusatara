@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { BookOpen, ChevronRight, Search } from 'lucide-react'
 import { EmptyState, Skeleton } from '@/components/site/form'
 import { api } from '@/lib/api'
-import { useHydrated, useStore } from '@/lib/store'
+import { useHydrated } from '@/lib/store'
 import { cn } from '@/lib/utils'
 
 type GlossaryTerm = { term: string; definition: string; moduleId: string; moduleTitle: string }
@@ -20,34 +20,24 @@ const byTerm = (a: GlossaryTerm, b: GlossaryTerm) => a.term.localeCompare(b.term
  */
 export function GlossaryDictionary() {
   const hydrated = useHydrated()
-  const modules = useStore((s) => s.modules)
   const [remote, setRemote] = useState<GlossaryTerm[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [search, setSearch] = useState('')
   const [moduleId, setModuleId] = useState(ALL)
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true)
+    setLoadError(false)
     api<{ items: GlossaryTerm[] }>('/modules/glossary')
       .then((res) => setRemote(res.items ?? []))
-      .catch(() => setRemote([])) // Offline: fall back to modules already on this device.
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
-  }, [])
+  }
+  useEffect(load, [])
 
-  // Server terms first, plus terms from modules only known on this device (demo or cached modules).
-  const terms = useMemo(() => {
-    const serverModules = new Set(remote.map((t) => t.moduleId))
-    const local = modules
-      .filter((m) => !serverModules.has(m.id))
-      .flatMap((m) =>
-        (m.deafVisualSummary?.glossary ?? []).map((g) => ({
-          term: g.term,
-          definition: g.definition ?? g.meaning ?? '',
-          moduleId: m.id,
-          moduleTitle: m.title,
-        })),
-      )
-    return [...remote, ...local].filter((t) => t.term && t.definition).sort(byTerm)
-  }, [remote, modules])
+  // Straight from the database (GET /modules/glossary), already sorted A-Z by the server.
+  const terms = useMemo(() => [...remote].filter((t) => t.term && t.definition).sort(byTerm), [remote])
 
   const moduleOptions = useMemo(() => {
     const seen = new Map<string, string>()
@@ -128,6 +118,16 @@ export function GlossaryDictionary() {
             <Skeleton key={i} className="h-40 rounded-3xl" />
           ))}
         </div>
+      ) : loadError ? (
+        <EmptyState
+          icon={BookOpen}
+          text="Kamus istilah belum bisa dimuat. Periksa koneksi lalu coba lagi."
+          action={
+            <button type="button" onClick={load} className="font-bold underline">
+              Coba lagi
+            </button>
+          }
+        />
       ) : terms.length === 0 ? (
         <EmptyState icon={BookOpen} text="Belum ada istilah. Istilah muncul setelah guru menyimpan modul." />
       ) : filtered.length === 0 ? (

@@ -130,11 +130,6 @@ export function AuthForm({ mode }: { mode: Mode }) {
           {isLogin ? 'Daftar' : 'Masuk'}
         </Link>
       </p>
-      {isLogin && (
-        <p className="mt-3 rounded-xl bg-muted px-4 py-3 text-center text-xs text-muted-foreground">
-          Mode demo: akun <span className="font-mono text-foreground">guru@demo.id</span> sudah terisi.
-        </p>
-      )}
     </div>
   )
 }

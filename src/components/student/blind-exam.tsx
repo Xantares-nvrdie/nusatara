@@ -641,16 +641,6 @@ export function BlindExam() {
                 <span>{listening ? 'Mendengarkan…' : 'Bicara Nama'}</span>
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setNameInput('Budi Santoso')
-                x.confirmName('Budi Santoso')
-              }}
-              className="text-sm font-bold text-[#FFE600] underline hover:text-white self-center pt-1"
-            >
-              Mode Cepat: Gunakan Nama Demo &ldquo;Budi Santoso&rdquo;
-            </button>
           </form>
         )}
 
@@ -661,9 +651,7 @@ export function BlindExam() {
             className="flex flex-col gap-6"
           >
             {heading('Masukkan PIN ujian')}
-            <p className="text-base text-white/80">
-              Ketik 4 digit PIN dari guru atau gunakan tombol PIN demo di bawah:
-            </p>
+            <p className="text-base text-white/80">Ketik 4 digit PIN ujian dari guru.</p>
             <label htmlFor="pin" className="sr-only">
               PIN ujian empat angka
             </label>
@@ -692,29 +680,6 @@ export function BlindExam() {
               >
                 <Mic className="size-6 text-current" aria-hidden="true" />
                 <span>{listening ? 'Mendengarkan…' : 'Sebutkan PIN'}</span>
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-              <span className="text-xs text-white/60">Pilihan Demo Cepat:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setPinInput('1234')
-                  x.loadPin('1234')
-                }}
-                className="rounded-xl border border-[#FFE600] px-3 py-1.5 text-xs font-black text-[#FFE600] hover:bg-[#FFE600] hover:text-black transition-colors"
-              >
-                PIN 1234 (Fotosintesis)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPinInput('5678')
-                  x.loadPin('5678')
-                }}
-                className="rounded-xl border border-[#FFE600] px-3 py-1.5 text-xs font-black text-[#FFE600] hover:bg-[#FFE600] hover:text-black transition-colors"
-              >
-                PIN 5678 (Tata Surya)
               </button>
             </div>
           </form>

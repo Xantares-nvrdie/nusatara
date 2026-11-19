@@ -13,16 +13,34 @@ export function ModuleViewer({ id, mode }: { id: string; mode: 'visual' | 'audio
   const hydrated = useHydrated()
   const mod = useStore((s) => s.modules.find((m) => m.id === id))
   const [loading, setLoading] = useState(!mod || !mod.blindAudioScript)
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const back = mode === 'visual' ? '/tunarungu/kartu' : '/tunanetra'
 
   useEffect(() => {
     if (!mod || !mod.blindAudioScript) {
       setLoading(true)
-      fetchModuleById(id).finally(() => setLoading(false))
+      setFailed(false)
+      fetchModuleById(id)
+        .catch(() => setFailed(true))
+        .finally(() => setLoading(false))
     }
-  }, [id, mod])
+  }, [id, mod, attempt])
 
   if (!hydrated || loading) return <Skeleton className="h-96" />
+  if (failed && !mod?.blindAudioScript) {
+    return (
+      <EmptyState
+        icon={FileQuestion}
+        text="Tidak bisa memuat modul. Periksa koneksi lalu coba lagi."
+        action={
+          <button type="button" onClick={() => setAttempt((n) => n + 1)} className="font-bold underline">
+            Coba lagi
+          </button>
+        }
+      />
+    )
+  }
   if (!mod) return <EmptyState icon={FileQuestion} text="Modul tidak ditemukan." action={<Link href={back} className="font-bold underline">Kembali</Link>} />
 
   const chapters = getChaptersForModule(mod)

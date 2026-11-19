@@ -32,3 +32,4 @@ export const PracticeModel = {
 } as const;
 
 export type ListPracticeQuery = typeof PracticeModel.listQuery.static;
+export type PracticeQuestionData = typeof PracticeQuestionInput.static;

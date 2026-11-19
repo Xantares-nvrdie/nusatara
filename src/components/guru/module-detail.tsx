@@ -20,16 +20,35 @@ export function ModuleDetail({ id }: { id: string }) {
   const mod = useStore((s) => s.modules.find((m) => m.id === id))
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('visual')
   const [loading, setLoading] = useState(!mod || !mod.blindAudioScript)
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!mod || !mod.blindAudioScript) {
       setLoading(true)
-      fetchModuleById(id).finally(() => setLoading(false))
+      setFailed(false)
+      fetchModuleById(id)
+        .catch(() => setFailed(true))
+        .finally(() => setLoading(false))
     }
-  }, [id, mod])
+  }, [id, mod, attempt])
 
   if (loading) {
     return <Skeleton className="h-96" />
+  }
+
+  if (failed && !mod?.blindAudioScript) {
+    return (
+      <EmptyState
+        icon={BookX}
+        text="Tidak bisa memuat modul. Periksa koneksi lalu coba lagi."
+        action={
+          <button type="button" onClick={() => setAttempt((n) => n + 1)} className={btnLime}>
+            Coba lagi
+          </button>
+        }
+      />
+    )
   }
 
   if (!mod) {

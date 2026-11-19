@@ -12,21 +12,20 @@ import { useStore } from '@/lib/store'
 export function Dashboard() {
   const container = useRef<HTMLDivElement>(null)
   const teacher = useStore((s) => s.teacher)
-  const modules = useStore((s) => s.modules)
+  const allModules = useStore((s) => s.modules)
+  const myIds = useStore((s) => s.myModuleIds)
   const exams = useStore((s) => s.exams)
-  const submissions = useStore((s) => s.submissions)
+  // The teacher's own modules (GET /modules/mine), not every public module.
+  const modules = useMemo(() => allModules.filter((m) => myIds.includes(m.id)), [allModules, myIds])
 
   const stats = useMemo(
     () => [
       { label: 'Modul Pembelajaran', value: modules.length, icon: BookOpen },
-      { label: 'Ujian Aktif', value: exams.filter((e) => e.status === 'active' || e.isActive).length, icon: ClipboardList },
-      {
-        label: 'Jawaban Terkumpul',
-        value: submissions.length || exams.reduce((acc: number, e: any) => acc + (e.submissionCount || 0), 0),
-        icon: ListChecks,
-      },
+      { label: 'Ujian Aktif', value: exams.filter((e) => e.status === 'active').length, icon: ClipboardList },
+      // Server-side count per exam, so it covers every submission, not only the ones loaded on this device.
+      { label: 'Jawaban Terkumpul', value: exams.reduce((acc, e) => acc + (e.submissionCount ?? 0), 0), icon: ListChecks },
     ],
-    [modules, exams, submissions],
+    [modules, exams],
   )
 
   const recent = useMemo(

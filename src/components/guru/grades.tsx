@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { PageHeader } from '@/components/guru/guru-shell'
-import { EmptyState, inputClass } from '@/components/site/form'
+import { Alert, EmptyState, inputClass } from '@/components/site/form'
 import { formatDate } from '@/lib/format'
-import { examStats, useStore } from '@/lib/store'
+import { examStats, loadExamSubmissions, useStore } from '@/lib/store'
 
 export function Grades({ initialExamId }: { initialExamId?: string }) {
   const exams = useStore((s) => s.exams)
@@ -17,6 +17,20 @@ export function Grades({ initialExamId }: { initialExamId?: string }) {
       setExamId(initialExamId ?? exams[0].id)
     }
   }, [exams, examId, initialExamId])
+
+  // Every submission of the chosen exam straight from the server (all pages), not just the 50 synced on login.
+  const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle')
+  useEffect(() => {
+    if (!examId) return
+    let cancelled = false
+    setLoadState('loading')
+    loadExamSubmissions(examId)
+      .then(() => !cancelled && setLoadState('idle'))
+      .catch(() => !cancelled && setLoadState('error'))
+    return () => {
+      cancelled = true
+    }
+  }, [examId])
 
   const exam = exams.find((e) => e.id === examId)
   const rows = submissions.filter((s) => s.examId === examId)
@@ -53,7 +67,16 @@ export function Grades({ initialExamId }: { initialExamId?: string }) {
               </div>
             </dl>
           </div>
-          {rows.length === 0 ? (
+          {loadState === 'error' && (
+            <Alert title="Nilai belum bisa dimuat" className="mb-6">
+              Tidak bisa terhubung ke server. Daftar di bawah mungkin belum lengkap.
+            </Alert>
+          )}
+          {loadState === 'loading' && rows.length === 0 ? (
+            <p role="status" className="py-10 text-center text-muted-foreground">
+              Memuat nilai…
+            </p>
+          ) : rows.length === 0 ? (
             <EmptyState icon={BarChart3} text="Belum ada siswa yang mengirim jawaban." />
           ) : (
             <div className="overflow-x-auto rounded-2xl border border-border bg-white">

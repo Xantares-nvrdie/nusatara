@@ -29,7 +29,7 @@ interface ScriptPlayerProps {
 
 export function ScriptPlayer({
   script,
-  moduleId = 'mod-tata-surya',
+  moduleId,
   moduleTitle = 'Materi Pembelajaran',
   visualData,
 }: ScriptPlayerProps) {

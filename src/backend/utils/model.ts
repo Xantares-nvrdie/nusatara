@@ -14,9 +14,11 @@ export const ErrorResponse = t.Object({ message: t.String(), code: t.Optional(t.
 export const NonEmptyString = (maxLength: number, options: { description?: string } = {}) =>
     t.String({ minLength: 1, maxLength, pattern: "\\S", ...options });
 
+export const MAX_PAGE_SIZE = 50;
+
 export const PaginationQuery = t.Object({
     page: t.Optional(t.Integer({ minimum: 1, default: 1 })),
-    pageSize: t.Optional(t.Integer({ minimum: 1, maximum: 50, default: 10 })),
+    pageSize: t.Optional(t.Integer({ minimum: 1, maximum: MAX_PAGE_SIZE, default: 10 })),
 });
 
 export const Paginated = <T extends TSchema>(item: T) =>

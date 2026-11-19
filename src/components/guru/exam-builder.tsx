@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/guru/guru-shell'
 import { Alert, Field, btnLime, btnSecondary, inputClass } from '@/components/site/form'
@@ -12,7 +12,10 @@ const blank = (id: number): Question => ({ id, text: '', options: { A: '', B: ''
 
 export function ExamBuilder({ moduleId }: { moduleId?: string }) {
   const router = useRouter()
-  const modules = useStore((s) => s.modules)
+  const allModules = useStore((s) => s.modules)
+  const myIds = useStore((s) => s.myModuleIds)
+  // The server only links an exam to the teacher's own module, so only those are offered.
+  const modules = useMemo(() => allModules.filter((m) => myIds.includes(m.id)), [allModules, myIds])
   const preset = modules.find((m) => m.id === moduleId)
   const [title, setTitle] = useState(preset ? `Ujian: ${preset.title}` : '')
   const [modId, setModId] = useState(preset?.id ?? '')

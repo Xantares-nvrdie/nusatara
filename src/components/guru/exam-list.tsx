@@ -67,7 +67,7 @@ export function ExamList() {
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {e.questions.length} soal · {st.count} pengumpulan
+                    {e.questionCount ?? e.questions.length} soal · {st.count} pengumpulan
                     {st.averageScore !== null && ` · rata-rata ${st.averageScore}`} · {formatDate(e.createdAt)}
                   </p>
                 </div>
