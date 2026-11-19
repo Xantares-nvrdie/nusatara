@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Headphones, Volume2, Mic, CheckCircle2, XCircle, RotateCcw, ArrowRight } from 'lucide-react'
 import { StudentShell } from '@/components/student/student-shell'
 import { btnLime } from '@/components/site/form'
+import { speak, stopSpeaking } from '@/lib/speech'
 
 interface PracticeQuestion {
   id: number
@@ -49,14 +50,13 @@ export default function LatihanSuaraPage() {
 
   const currentQ = SAMPLE_QUESTIONS[currentIdx]
 
+  // Shared helper: Indonesian voice, and stays silent while the tab is in the background.
   function speakText(text: string) {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'id-ID'
-    utterance.rate = 0.95
-    window.speechSynthesis.speak(utterance)
+    speak(text, { rate: 0.95 })
   }
+
+  // Stop reading when the student leaves this page (e.g. taps another menu item).
+  useEffect(() => () => stopSpeaking(), [])
 
   // Speak question when loaded
   useEffect(() => {

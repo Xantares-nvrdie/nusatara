@@ -63,6 +63,15 @@ export function ScriptPlayer({
     }
   }, [])
 
+  // SpeechGuard cancels speech when the tab is hidden; reset the controls so they don't still say "Jeda".
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') stop()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return
@@ -179,7 +188,11 @@ export function ScriptPlayer({
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('visual-summary')}
+              onClick={() => {
+                // Mode Visual has no audio controls, so the narration stops instead of playing on unseen.
+                stop()
+                setViewMode('visual-summary')
+              }}
               className={cn(
                 'flex flex-1 @2xl:flex-none items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all',
                 viewMode === 'visual-summary'
@@ -220,7 +233,7 @@ export function ScriptPlayer({
               </span>
               <h4 className="text-lg font-black text-black">Uji Pemahaman Materi Modul Ini</h4>
               <p className="text-xs font-semibold text-neutral-800">
-                Gunakan PIN <strong>5678</strong> untuk mengikuti ujian pilihan ganda resmi.
+                Masukkan <strong>PIN ujian 4 angka dari guru</strong> untuk mengikuti ujian pilihan ganda.
               </p>
             </div>
             <Link
@@ -430,8 +443,9 @@ export function ScriptPlayer({
                 Anda telah mempelajari seluruh naskah modul ini. Ikuti ujian evaluasi untuk mendapatkan nilai pemahaman belajar Anda.
               </p>
               <div className="flex flex-wrap items-center gap-2 pt-1 text-xs font-bold text-neutral-700">
-                <span className="rounded-md bg-white border border-border px-2.5 py-1 font-mono shadow-2xs">
-                  PIN Ujian: <strong className="text-[#7c3aed] font-black">5678</strong>
+                {/* Each exam gets its own PIN from the server; the teacher hands it out in class. */}
+                <span className="rounded-md bg-white border border-border px-2.5 py-1 shadow-2xs">
+                  PIN ujian: <strong className="text-[#7c3aed] font-black">minta ke guru</strong>
                 </span>
                 <span className="text-muted-foreground">· Ramah Tunarungu & Tunanetra</span>
               </div>

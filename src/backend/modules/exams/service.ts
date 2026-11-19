@@ -165,6 +165,7 @@ export const ExamService = {
         } catch (error) {
             if (isUniqueViolation(error, EXAM_ACTIVE_PIN_INDEX)) {
                 throw status(409, {
+                    code: "PIN_CONFLICT",
                     message:
                         "PIN ujian ini sudah dipakai ujian aktif lain. Buat ujian baru untuk mendapatkan PIN baru.",
                 });

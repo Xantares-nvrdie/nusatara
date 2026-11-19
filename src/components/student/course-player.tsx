@@ -903,8 +903,9 @@ export function CoursePlayer({ id }: { id: string }) {
                         : 'Anda sedang berada di bab terakhir materi ini. Setelah menuntaskan pelajaran, Anda dapat langsung menguji pemahaman melalui ujian evaluasi.'}
                     </p>
                     <div className="flex flex-wrap items-center gap-2.5 text-xs font-bold text-neutral-700 pt-1">
-                      <span className="rounded-lg bg-white border border-border px-2.5 py-1 font-mono text-foreground shadow-2xs">
-                        PIN Ujian: <strong className="text-[#7c3aed] font-black text-sm">5678</strong>
+                      {/* Each exam gets its own PIN from the server; the teacher hands it out in class. */}
+                      <span className="rounded-lg bg-white border border-border px-2.5 py-1 text-foreground shadow-2xs">
+                        PIN ujian: <strong className="text-[#7c3aed] font-black">minta ke guru</strong>
                       </span>
                       <span className="text-muted-foreground">· Terbuka untuk Siswa</span>
                     </div>

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Hand, Mic, Volume2, WifiOff } from 'lucide-react'
-import { getRecognition, playBeep, speak, stopSpeaking } from '@/lib/speech'
+import { getRecognition, pageHidden, playBeep, speak, stopSpeaking } from '@/lib/speech'
 import { LETTERS, type Letter } from '@/lib/types'
 import { useExamAttempt } from '@/lib/use-exam-attempt'
 import { cn } from '@/lib/utils'
@@ -55,6 +55,7 @@ export function BlindExam() {
   const submitTapTimerRef = useRef<NodeJS.Timeout | null>(null)
   const touchStartRef = useRef<{ x: number; y: number; time: number; touches: number } | null>(null)
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const recognitionRef = useRef<ReturnType<typeof getRecognition>>(null)
 
   const q = x.exam?.questions[x.index]
   const total = x.exam?.questions.length ?? 0
@@ -117,7 +118,27 @@ export function BlindExam() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [x.phase, x.index])
 
-  useEffect(() => () => stopSpeaking(), [])
+  useEffect(
+    () => () => {
+      stopSpeaking()
+      recognitionRef.current?.abort()
+    },
+    [],
+  )
+
+  // Leaving the tab silences the exam (SpeechGuard cancels speech) and stops the microphone.
+  // Coming back reads the current question again so the student knows where they are.
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') {
+        recognitionRef.current?.abort()
+      } else if (x.phase === 'question') {
+        readQuestion()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [x.phase, readQuestion])
 
   const next = useCallback(() => {
     setPendingLetter(null)
@@ -175,6 +196,8 @@ export function BlindExam() {
       return
     }
     stopSpeaking()
+    recognitionRef.current?.abort()
+    recognitionRef.current = rec
     setListening(true)
 
     rec.onresult = (e) => {
@@ -232,7 +255,9 @@ export function BlindExam() {
       }
     }
 
-    rec.onerror = () => {
+    rec.onerror = (e) => {
+      // We abort the mic ourselves when the tab is hidden or a new listen starts; that isn't a failure.
+      if (e?.error === 'aborted' || pageHidden()) return
       setHint('Suara tidak terdengar atau koneksi terputus. Mengaktifkan mode ketuk cadangan.')
       // Fallback otomatis saat Web Speech Recognition gagal (PRD F-04b)
       if (!tapMode) {
@@ -240,7 +265,10 @@ export function BlindExam() {
       }
     }
 
-    rec.onend = () => setListening(false)
+    rec.onend = () => {
+      setListening(false)
+      if (recognitionRef.current === rec) recognitionRef.current = null
+    }
     rec.start()
   }
 

@@ -177,11 +177,10 @@ async function syncTeacherData() {
     try {
       const examsRes = await api<{ items: any[] }>('/exams?pageSize=50')
       if (examsRes?.items && Array.isArray(examsRes.items)) {
+        // The server is the source of truth for a signed-in teacher. Merging kept the local demo exams
+        // (PIN 1234/5678) next to real ones, so the list showed two active exams with the same PIN.
         const remoteExams = examsRes.items.map(normalizeExam)
-        setState((s) => {
-          const remoteIds = new Set(remoteExams.map((e) => e.id))
-          return { ...s, exams: [...remoteExams, ...s.exams.filter((e) => !remoteIds.has(e.id))] }
-        })
+        setState((s) => ({ ...s, exams: remoteExams }))
       }
     } catch {
       // ignore
@@ -191,11 +190,9 @@ async function syncTeacherData() {
     try {
       const subRes = await api<{ items: any[] }>('/submissions?pageSize=50') // API max is 50
       if (subRes?.items && Array.isArray(subRes.items)) {
+        // Same as exams: demo submissions belong to the demo exams, so they go too.
         const remoteSubs = subRes.items.map(normalizeSubmission)
-        setState((s) => {
-          const remoteIds = new Set(remoteSubs.map((sub) => sub.id))
-          return { ...s, submissions: [...remoteSubs, ...s.submissions.filter((sub) => !remoteIds.has(sub.id))] }
-        })
+        setState((s) => ({ ...s, submissions: remoteSubs }))
       }
     } catch {
       // ignore
@@ -417,7 +414,10 @@ export async function createExam(input: { title: string; moduleId: string | null
     const exam = normalizeExam(res)
     setState((s) => ({ ...s, exams: [exam, ...s.exams.filter((e) => e.id !== exam.id)] }))
     return exam
-  } catch (err) {
+  } catch (err: any) {
+    // The server answered with a real error (validation, PINs full, ...): show it instead of faking an exam.
+    // Only a network failure or a local demo login (401) falls back to a device-only exam.
+    if (err?.status && err.status !== 401) throw err
     console.warn('[store] createExam backend failed, saving locally:', err)
     // Fallback to local
     const active = new Set(getSnapshot().exams.filter((e) => e.status === 'active').map((e) => e.pin))
@@ -442,17 +442,16 @@ export async function createExam(input: { title: string; moduleId: string | null
   }
 }
 
+const SERVER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function setExamStatus(id: string, status: Exam['status']) {
-  try {
+  // Server exams (UUID ids) only change when the server agrees, e.g. reopening fails with 409 PIN_CONFLICT
+  // if another active exam took the PIN. Device-only demo exams are toggled locally.
+  if (SERVER_ID.test(id)) {
     await api(`/exams/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ isActive: status === 'active' }),
     })
-  } catch (err: any) {
-    if (err?.code === 'PIN_CONFLICT') {
-      throw err
-    }
-    console.warn('[store] setExamStatus backend failed, saving locally:', err)
   }
 
   setState((st) => ({
@@ -495,9 +494,8 @@ export async function getExamByPin(pin: string) {
       throw new ApiError('EXAM_CLOSED', 'Ujian sudah ditutup oleh guru.')
     }
     if (err?.code === 'PIN_NOT_FOUND' || err?.status === 404) {
-      // Check local cache
-      const local = getSnapshot().exams.find((e) => e.pin === pin && (e.status === 'active' || e.isActive))
-      if (local) return local
+      // The server is reachable and has no active exam with this PIN. Don't fall back to a local demo exam
+      // with the same PIN: its answers could never be submitted (the server would reject them too).
       throw new ApiError('PIN_NOT_FOUND', 'PIN tidak ditemukan atau ujian sudah ditutup.')
     }
 

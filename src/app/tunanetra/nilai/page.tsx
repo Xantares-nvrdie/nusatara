@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Award, Volume2, Search, CheckCircle2, Mic } from 'lucide-react'
 import { StudentShell } from '@/components/student/student-shell'
 import { btnLime } from '@/components/site/form'
+import { speak, stopSpeaking } from '@/lib/speech'
 
 interface StudentResult {
   pin: string
@@ -40,14 +41,13 @@ export default function CekNilaiTunanetraPage() {
   const [searched, setSearched] = useState(false)
   const [results, setResults] = useState<StudentResult[]>([])
 
+  // Shared helper: Indonesian voice, and stays silent while the tab is in the background.
   function speakText(text: string) {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'id-ID'
-    utterance.rate = 0.95
-    window.speechSynthesis.speak(utterance)
+    speak(text, { rate: 0.95 })
   }
+
+  // Stop reading when the student leaves this page.
+  useEffect(() => () => stopSpeaking(), [])
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()

@@ -9,11 +9,18 @@ export function hasIndonesianVoice() {
   return window.speechSynthesis.getVoices().some((v) => v.lang.toLowerCase().startsWith('id'))
 }
 
+/** True while the tab is in the background. Browsers keep speechSynthesis running there, so we stay silent. */
+export function pageHidden() {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden'
+}
+
 export function speak(text: string, opts: { rate?: number; onEnd?: () => void } = {}) {
   if (!ttsSupported()) {
     opts.onEnd?.()
     return
   }
+  // Timers and recognition callbacks can still fire in a background tab; don't start talking there.
+  if (pageHidden()) return
   const synth = window.speechSynthesis
   synth.cancel()
   const utter = new SpeechSynthesisUtterance(text)
