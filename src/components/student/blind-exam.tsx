@@ -1,14 +1,14 @@
 'use client'
 
+import { ArrowLeft, Hand, Mic, WifiOff } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Hand, Mic, WifiOff } from 'lucide-react'
 import { getRecognition, playBeep, speak, stopSpeaking } from '@/lib/speech'
 import { LETTERS, type Letter } from '@/lib/types'
 import { useExamAttempt } from '@/lib/use-exam-attempt'
 import { type VoiceStopReason, useVoiceMode } from '@/lib/use-voice-mode'
-import { command, parseAnswer, parseDigits, parseName } from '@/lib/voice-commands'
 import { cn } from '@/lib/utils'
+import { command, parseAnswer, parseDigits, parseName } from '@/lib/voice-commands'
 
 type Phase = ReturnType<typeof useExamAttempt>['phase']
 
@@ -33,9 +33,9 @@ const VOICE_STOP_MESSAGE: Record<VoiceStopReason, string> = {
 }
 
 const hcBtn =
-  'min-h-16 rounded-2xl border-4 border-[#FFE600] px-6 text-xl font-black text-[#FFE600] transition-colors hover:bg-[#FFE600] hover:text-black focus-visible:bg-[#FFE600] focus-visible:text-black focus-visible:outline-[4px] focus-visible:outline-offset-4 focus-visible:outline-white disabled:opacity-50'
+  'min-h-14 sm:min-h-16 rounded-2xl border-4 border-[#FFE600] px-4 py-3 sm:px-6 text-base sm:text-xl font-black text-[#FFE600] transition-colors hover:bg-[#FFE600] hover:text-black focus-visible:bg-[#FFE600] focus-visible:text-black focus-visible:outline-[4px] focus-visible:outline-offset-4 focus-visible:outline-white disabled:opacity-50'
 const hcInput =
-  'min-h-16 w-full rounded-2xl border-4 border-[#FFE600] bg-black px-5 text-2xl font-bold text-white placeholder:text-white/50 focus-visible:outline-[4px] focus-visible:outline-offset-4 focus-visible:outline-white'
+  'min-h-14 sm:min-h-16 w-full rounded-2xl border-4 border-[#FFE600] bg-black px-4 sm:px-5 text-xl sm:text-2xl font-bold text-white placeholder:text-white/50 focus-visible:outline-[4px] focus-visible:outline-offset-4 focus-visible:outline-white'
 
 export function BlindExam() {
   const x = useExamAttempt('tunanetra')
@@ -123,8 +123,9 @@ export function BlindExam() {
     }
     if (x.phase === 'question') {
       readQuestion()
-    } else if (prompts[x.phase]) {
-      speak(prompts[x.phase]!)
+    } else {
+      const promptText = prompts[x.phase]
+      if (promptText) speak(promptText)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [x.phase, x.index])
@@ -511,40 +512,45 @@ export function BlindExam() {
   }
 
   const heading = (text: string) => (
-    <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-black text-balance text-white md:text-6xl">
+    <h1
+      ref={headingRef}
+      tabIndex={-1}
+      className="text-2xl sm:text-4xl font-black leading-snug text-balance break-words text-white md:text-5xl"
+    >
       {text}
     </h1>
   )
 
   return (
     <div
-      className="flex min-h-dvh flex-col bg-black text-white select-none touch-manipulation cursor-pointer"
+      className="flex min-h-dvh w-full overflow-x-hidden flex-col bg-black text-white select-none touch-manipulation cursor-pointer"
       data-state={x.phase}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onClick={handleContainerClick}
     >
-      <header className="flex items-center justify-between gap-4 border-b-4 border-[#FFE600] px-6 py-4">
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b-4 border-[#FFE600] px-4 py-3.5 sm:px-6 sm:py-4">
         <Link
           href="/tunanetra"
-          className="inline-flex min-h-12 items-center gap-2 text-lg font-bold text-[#FFE600] underline-offset-4 hover:underline"
+          className="inline-flex min-h-11 w-fit items-center gap-2 text-base sm:text-lg font-bold text-[#FFE600] underline-offset-4 hover:underline"
         >
-          <ArrowLeft className="size-5" aria-hidden="true" /> Portal tunanetra
+          <ArrowLeft className="size-5 shrink-0" aria-hidden="true" />
+          <span>Portal tunanetra</span>
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="grid grid-cols-2 sm:flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <button
             type="button"
             onClick={toggleTapMode}
             aria-pressed={tapMode}
             className={cn(
               hcBtn,
-              'flex items-center gap-2 text-base md:text-lg min-h-12 px-4',
+              'flex items-center justify-center gap-2 text-sm sm:text-base md:text-lg min-h-12 px-3 py-2.5 sm:px-4',
               tapMode ? 'bg-[#FFE600] text-black font-black' : 'text-white border-white/60',
             )}
             title="Tekan T untuk toggle mode ketuk"
           >
-            <Hand className="size-5" aria-hidden="true" />
-            <span>{tapMode ? 'Mode Ketuk (Aktif)' : 'Mode Ketuk'}</span>
+            <Hand className="size-4 sm:size-5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{tapMode ? 'Ketuk: Aktif' : 'Mode Ketuk'}</span>
             <span className="hidden md:inline">(T)</span>
           </button>
           <button
@@ -552,27 +558,29 @@ export function BlindExam() {
             onClick={toggleVoiceMode}
             className={cn(
               hcBtn,
-              'flex items-center gap-2 text-base md:text-lg min-h-12 px-4',
+              'flex items-center justify-center gap-2 text-sm sm:text-base md:text-lg min-h-12 px-3 py-2.5 sm:px-4',
               voice.active && 'bg-[#FFE600] text-black',
             )}
             aria-pressed={voice.active}
             title="Tekan V untuk menyalakan atau mematikan mode suara"
           >
-            <Mic className={cn('size-5', voice.listening && 'animate-pulse')} aria-hidden="true" />
-            <span>{voice.listening ? 'Mendengarkan…' : voice.active ? 'Mode Suara Aktif' : 'Mode Suara'}</span>
+            <Mic className={cn('size-4 sm:size-5 shrink-0', voice.listening && 'animate-pulse')} aria-hidden="true" />
+            <span className="truncate">
+              {voice.listening ? 'Mendengar…' : voice.active ? 'Suara: Aktif' : 'Mode Suara'}
+            </span>
             <span className="hidden md:inline">(V)</span>
           </button>
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-8 px-6 py-12">
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-6 sm:gap-8 px-4 py-6 sm:px-6 sm:py-12">
         <p className="sr-only" aria-live="polite">
           {hint}
         </p>
         {hint && (
           <p
             aria-hidden="true"
-            className="text-lg font-bold text-[#FFE600] bg-neutral-900 border border-[#FFE600] rounded-xl px-4 py-2"
+            className="text-base sm:text-lg font-bold text-[#FFE600] bg-neutral-900 border-2 border-[#FFE600] rounded-xl px-4 py-2.5 break-words"
           >
             {hint}
           </p>
@@ -580,12 +588,12 @@ export function BlindExam() {
 
         {/* Status Mode Ketuk Banner (PRD F-04b) */}
         {tapMode && x.phase === 'question' && (
-          <div className="rounded-2xl border-4 border-[#FFE600] bg-[#FFE600]/10 p-4 text-center">
-            <span className="text-xl font-black text-[#FFE600] block">
+          <div className="rounded-2xl border-4 border-[#FFE600] bg-[#FFE600]/10 p-3.5 sm:p-4 text-center">
+            <span className="text-base sm:text-xl font-black text-[#FFE600] block">
               MODE CADANGAN KETUK &amp; GESER AKTIF
             </span>
-            <span className="text-sm font-semibold text-white/90">
-              Ketuk 1x=A · 2x=B · 3x=C · 4x=D · Ketuk 2 Jari=Ulang Soal · Geser Kiri/Kanan=Navigasi
+            <span className="mt-1 block text-xs sm:text-sm font-semibold text-white/90 leading-relaxed">
+              Ketuk 1x=A · 2x=B · 3x=C · 4x=D · 2 Jari=Ulang · Geser=Navigasi
             </span>
           </div>
         )}
@@ -650,7 +658,7 @@ export function BlindExam() {
               maxLength={4}
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
-              className={cn(hcInput, 'text-center font-mono text-5xl tracking-[0.5em]')}
+              className={cn(hcInput, 'text-center font-mono text-3xl sm:text-5xl tracking-[0.35em] sm:tracking-[0.5em]')}
               placeholder="0000"
             />
             <div className="flex flex-col sm:flex-row gap-3">
@@ -678,13 +686,13 @@ export function BlindExam() {
         )}
 
         {x.phase === 'question' && q && (
-          <section className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-              <p className="text-xl font-bold text-[#FFE600]">
+          <section className="flex flex-col gap-5 sm:gap-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-lg sm:text-xl font-bold text-[#FFE600]">
                 Soal {x.index + 1} dari {total}
               </p>
               {pendingLetter && (
-                <span className="rounded-lg bg-[#FFE600] px-3 py-1 text-sm font-black text-black animate-pulse">
+                <span className="rounded-lg bg-[#FFE600] px-3 py-1 text-xs sm:text-sm font-black text-black animate-pulse">
                   Konfirmasi Pilihan {pendingLetter}…
                 </span>
               )}
@@ -692,31 +700,31 @@ export function BlindExam() {
 
             {heading(q.text)}
 
-            <fieldset>
+            <fieldset className="min-w-0">
               <legend className="sr-only">Pilihan jawaban</legend>
               <ul className="flex flex-col gap-3">
                 {LETTERS.map((l) => {
                   const active = x.answers[q.id] === l
                   const isPending = pendingLetter === l
                   return (
-                    <li key={l}>
+                    <li key={l} className="min-w-0">
                       <button
                         type="button"
                         aria-pressed={active}
                         onClick={() => choose(l, true)}
                         className={cn(
                           hcBtn,
-                          'flex w-full items-center gap-4 text-left transition-all',
+                          'flex w-full min-w-0 items-start sm:items-center gap-3 sm:gap-4 text-left transition-all',
                           active && 'bg-[#FFE600] text-black font-black',
                           isPending && 'ring-4 ring-white ring-offset-2 ring-offset-black',
                         )}
                       >
-                        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border-4 border-current">
+                        <span className="flex size-9 sm:size-10 shrink-0 items-center justify-center rounded-lg border-4 border-current text-base sm:text-xl">
                           {l}
                         </span>
-                        <span className="flex-1">{q.options[l]}</span>
-                        {active && <span className="text-sm font-bold">(Tersimpan)</span>}
-                        {isPending && <span className="text-sm font-bold text-black">(Yakin?)</span>}
+                        <span className="min-w-0 flex-1 break-words leading-snug">{q.options[l]}</span>
+                        {active && <span className="shrink-0 text-xs sm:text-sm font-bold">(Tersimpan)</span>}
+                        {isPending && <span className="shrink-0 text-xs sm:text-sm font-bold text-black">(Yakin?)</span>}
                       </button>
                     </li>
                   )
@@ -724,14 +732,27 @@ export function BlindExam() {
               </ul>
             </fieldset>
 
-            <div className="grid grid-cols-3 gap-3 pt-2">
-              <button type="button" onClick={prev} disabled={x.index === 0} className={hcBtn}>
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 pt-2">
+              <button
+                type="button"
+                onClick={prev}
+                disabled={x.index === 0}
+                className={cn(hcBtn, 'px-2 sm:px-6 text-sm sm:text-xl')}
+              >
                 Kembali <span className="hidden md:inline">(P)</span>
               </button>
-              <button type="button" onClick={readQuestion} className={hcBtn}>
+              <button
+                type="button"
+                onClick={readQuestion}
+                className={cn(hcBtn, 'px-2 sm:px-6 text-sm sm:text-xl')}
+              >
                 Ulang <span className="hidden md:inline">(Spasi)</span>
               </button>
-              <button type="button" onClick={next} className={hcBtn}>
+              <button
+                type="button"
+                onClick={next}
+                className={cn(hcBtn, 'px-2 sm:px-6 text-sm sm:text-xl')}
+              >
                 {x.index === total - 1 ? 'Selesai' : 'Lanjut'} <span className="hidden md:inline">(N)</span>
               </button>
             </div>
@@ -792,7 +813,7 @@ export function BlindExam() {
       </main>
 
       {x.phase === 'question' && (
-        <footer className="border-t-4 border-[#FFE600] px-6 py-4 text-center text-base md:text-lg text-white/80">
+        <footer className="border-t-4 border-[#FFE600] px-4 py-3.5 sm:px-6 sm:py-4 text-center text-sm sm:text-base md:text-lg text-white/80">
           <div>Katakan: &ldquo;Jawab, B&rdquo; · &ldquo;Ulangi soal&rdquo; · &ldquo;Selesai ujian&rdquo;</div>
           <div className="hidden md:block mt-1 text-sm text-white/60">
             Keyboard: A–D jawab · Spasi ulang · N lanjut · P kembali · T mode ketuk
