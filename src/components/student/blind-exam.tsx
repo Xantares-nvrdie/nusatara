@@ -13,7 +13,15 @@ import { command, parseAnswer, parseDigits, parseName } from '@/lib/voice-comman
 type Phase = ReturnType<typeof useExamAttempt>['phase']
 
 const TAP_INSTRUCTIONS =
-  'Mode ketuk aktif. Ketuk satu kali untuk A, dua kali untuk B, tiga kali untuk C, atau empat kali untuk D. Ketuk dua jari untuk ulangi soal. Geser kiri untuk kembali, geser kanan untuk lanjut.'
+  'Mode ketuk aktif. Ketuk satu kali untuk A, dua kali untuk B, tiga kali untuk C, atau empat kali untuk D, lalu ketuk sekali lagi jika yakin. Ketuk dua jari untuk ulangi soal. Geser kiri untuk kembali, geser kanan untuk lanjut. Tahan layar dua detik untuk keluar dari mode ketuk.'
+
+const VOICE_CONFIRM_HINT = 'Katakan: Ya, jika yakin. Atau: Tidak, untuk memilih ulang.'
+
+/** Best effort: browsers refuse fullscreen without a user gesture, and iPhone Safari doesn't support it. */
+function enterFullscreen() {
+  if (typeof document === 'undefined' || document.fullscreenElement) return
+  document.documentElement.requestFullscreen?.().catch(() => {})
+}
 
 /** What voice mode tells the student to say on each step. Steps without a hint don't listen. */
 const VOICE_STEP_HINT: Partial<Record<Phase, string>> = {
@@ -57,6 +65,8 @@ export function BlindExam() {
   const submitTapTimerRef = useRef<NodeJS.Timeout | null>(null)
   const touchStartRef = useRef<{ x: number; y: number; time: number; touches: number } | null>(null)
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
+  /** Set when a 2 s hold switched the mode, so lifting that finger isn't also counted as a tap. */
+  const longPressFiredRef = useRef(false)
   /** Mirrors `voice.active` for the spoken prompts, which are built in an effect declared before `voice`. */
   const voiceOnRef = useRef(false)
   /** True between saving an answer and moving to the next question. */
@@ -82,12 +92,21 @@ export function BlindExam() {
 
   // Fullscreen trigger upon entering question mode
   useEffect(() => {
-    if (x.phase === 'question' && typeof document !== 'undefined' && !document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {
-        // Fullscreen might be blocked by browser policy without user gesture
-      })
-    }
+    if (x.phase === 'question') enterFullscreen()
   }, [x.phase])
+
+  /** Drops a half-entered answer (tap count, unconfirmed choice, submit prompt) and its timers. */
+  const resetPending = useCallback(() => {
+    for (const timer of [tapTimerRef, confirmTapTimerRef, submitTapTimerRef]) {
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = null
+    }
+    setTapCount(0)
+    setPendingLetter(null)
+    setConfirmTapCount(0)
+    setPendingSubmitConfirm(false)
+    setSubmitTapCount(0)
+  }, [])
 
   // Online recovery: auto-retry if network comes back after a failure
   useEffect(() => {
@@ -103,6 +122,8 @@ export function BlindExam() {
 
   // Phase change voice prompts
   useEffect(() => {
+    // A choice left unconfirmed on the previous question or step must not carry over.
+    resetPending()
     headingRef.current?.focus()
     // In voice mode the prompts say what to speak; otherwise which keys to press.
     const voiceOn = voiceOnRef.current
@@ -128,7 +149,7 @@ export function BlindExam() {
       if (promptText) speak(promptText)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [x.phase, x.index])
+  }, [x.phase, x.index, resetPending])
 
   useEffect(() => () => stopSpeaking(), [])
 
@@ -169,7 +190,11 @@ export function BlindExam() {
       x.answer(q.id, l)
       playBeep()
       setPendingLetter(null)
-      speak(`Jawaban ${l} tersimpan, lanjut ke soal berikutnya.`)
+      speak(
+        autoAdvance && x.index < total - 1
+          ? `Jawaban ${l} tersimpan, lanjut ke soal berikutnya.`
+          : `Jawaban ${l} tersimpan.`,
+      )
       if (autoAdvance) {
         // Voice mode must not listen in this gap, or the next answer would land on this question.
         advancingRef.current = true
@@ -179,17 +204,36 @@ export function BlindExam() {
         }, 1200)
       }
     },
-    [q, x, next],
+    [q, x, total, next],
+  )
+
+  /**
+   * Voice and tap answers are only a proposal: repeat the option and ask before saving, so a misheard word or a
+   * miscounted tap never becomes an answer (PRD F-04, F-04b). Keyboard and on-screen buttons save directly.
+   */
+  const askConfirm = useCallback(
+    (l: Letter, via: 'voice' | 'tap') => {
+      if (!q) return
+      setPendingLetter(l)
+      setConfirmTapCount(0)
+      speak(
+        `Anda memilih ${l}, ${q.options[l]}. Apakah Anda yakin? ${
+          via === 'voice' ? VOICE_CONFIRM_HINT : 'Ketuk sekali jika yakin, dua kali untuk pilih ulang.'
+        }`,
+      )
+    },
+    [q],
   )
 
   // Toggle Tap Fallback Mode (PRD F-04b). `reason` explains why voice mode had to give up first.
   const activateTapMode = useCallback((reason?: string) => {
+    resetPending()
     setTapMode(true)
+    enterFullscreen()
     playBeep()
     setHint(reason ? `${reason} Mode ketuk aktif.` : 'Mode ketuk aktif (F-04b)')
     speak(reason ? `${reason} ${TAP_INSTRUCTIONS}` : TAP_INSTRUCTIONS)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [resetPending])
 
   // What the student said, handled for the step they are on right now (PRD F-04).
   function handleTranscript(text: string) {
@@ -208,16 +252,17 @@ export function BlindExam() {
       }
       x.loadPin(d)
     } else if (x.phase === 'question' && q) {
+      if (pendingLetter) return handleConfirmReply(text, pendingLetter)
       // An explicit "Jawab B" wins over everything else in the sentence.
       const explicit = /\b(jawab|jawaban|jawabannya|pilih|pilihan|opsi)\b/i.test(text) ? parseAnswer(text, q.options) : null
-      if (explicit) return choose(explicit, true)
+      if (explicit) return askConfirm(explicit, 'voice')
       // The mic is always on in voice mode, so a stray "selesai" only opens the summary; "Kirim" there submits.
       if (command.finish(text)) return x.setPhase('review')
       if (command.repeat(text)) return readQuestion()
       if (command.next(text)) return next()
       if (command.prev(text)) return x.index === 0 ? speak('Ini soal pertama.') : prev()
       const answer = parseAnswer(text, q.options)
-      if (answer) return choose(answer, true)
+      if (answer) return askConfirm(answer, 'voice')
       speak('Perintah tidak dikenali. Katakan: Jawab A, B, C, atau D. Atau: Ulangi soal.')
     } else if (x.phase === 'review') {
       if (command.review(text)) return prev()
@@ -227,6 +272,30 @@ export function BlindExam() {
       if (command.retry(text)) return x.retry()
       speak('Katakan: Coba lagi.')
     }
+  }
+
+  // The reply to "Apakah Anda yakin?" in voice mode. Only "ya" saves; anything unclear asks again.
+  function handleConfirmReply(text: string, pending: Letter) {
+    // Letters only, without option text: an option such as "Benar" must not read as a new choice.
+    const said = parseAnswer(text)
+    const switched = said && said !== pending ? said : null
+    // "Tidak yakin" contains "yakin", so a no wins over a yes.
+    if (command.no(text)) {
+      if (switched) return askConfirm(switched, 'voice')
+      setPendingLetter(null)
+      return speak('Baik, silakan pilih ulang. Katakan: Jawab A, B, C, atau D. Atau: Ulangi soal.')
+    }
+    if (switched) return askConfirm(switched, 'voice')
+    if (command.yes(text)) return choose(pending, true)
+    if (command.repeat(text)) {
+      setPendingLetter(null)
+      return readQuestion()
+    }
+    if (command.finish(text)) return x.setPhase('review')
+    if (command.next(text)) return next()
+    if (command.prev(text)) return x.index === 0 ? speak('Ini soal pertama.') : prev()
+    if (said === pending) return askConfirm(pending, 'voice')
+    speak(`Jawaban ${pending} belum disimpan. ${VOICE_CONFIRM_HINT}`)
   }
 
   // Hands-free voice mode: one press (button or V) keeps it listening after every spoken prompt.
@@ -239,6 +308,7 @@ export function BlindExam() {
   voiceOnRef.current = voice.active
 
   function toggleVoiceMode() {
+    resetPending()
     if (voice.active) {
       voice.stop()
       speak('Mode suara dimatikan. Tekan V untuk menyalakannya lagi.')
@@ -257,6 +327,7 @@ export function BlindExam() {
   // Tap mode and voice mode exclude each other: the mic would hear the taps' spoken feedback.
   function toggleTapMode() {
     if (tapMode) {
+      resetPending()
       setTapMode(false)
       speak('Mode ketuk dimatikan. Tekan V untuk mode suara.')
     } else {
@@ -325,6 +396,11 @@ export function BlindExam() {
   /* F-04b Mode Cadangan Ketuk & Geser (Tap & Gesture Fallback) Engine  */
   /* ------------------------------------------------------------------ */
 
+  function cancelLongPress() {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = null
+  }
+
   // Touch Start Handler: detect multi-touch and initiate long-press (2s)
   function handleTouchStart(e: React.TouchEvent) {
     if (x.phase !== 'question') return
@@ -332,16 +408,40 @@ export function BlindExam() {
     const t = e.touches[0]
     touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now(), touches }
 
-    // Manual activation trigger: Tahan layar 2 detik (PRD F-04b)
-    if (!tapMode && touches === 1) {
-      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current)
+    // Tahan layar 2 detik: switches tap mode on, or off again. In tap mode the screen has no buttons, so this
+    // (or the T key) is the only way out (PRD F-04b).
+    cancelLongPress()
+    longPressFiredRef.current = false
+    if (touches === 1) {
       longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null
+        longPressFiredRef.current = true
         toggleTapRef.current()
       }, 2000)
     }
   }
 
+  // A finger that moves is swiping or scrolling, not holding.
+  function handleTouchMove(e: React.TouchEvent) {
+    const start = touchStartRef.current
+    const t = e.touches[0]
+    if (start && t && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 25) cancelLongPress()
+  }
+
+  // The browser took over the touch (e.g. scrolling a long question): no tap, no swipe, no hold.
+  function handleTouchCancel() {
+    cancelLongPress()
+    touchStartRef.current = null
+  }
+
   const touchFiredRef = useRef(false)
+  /** Touch is followed by an emulated mouse click; skip it so one tap doesn't count twice. */
+  function suppressNextClick() {
+    touchFiredRef.current = true
+    setTimeout(() => {
+      touchFiredRef.current = false
+    }, 300)
+  }
 
   // Trigger Single Tap Processing (Compatible with Touch & Desktop Mouse Click)
   const registerTap = useCallback(() => {
@@ -400,11 +500,7 @@ export function BlindExam() {
       else if (currentTaps >= 4) selected = 'D'
 
       setTapCount(0)
-      if (selected) {
-        setPendingLetter(selected)
-        setConfirmTapCount(0)
-        speak(`Pilihan ${selected}. Ketuk sekali untuk yakin, dua kali untuk pilih ulang.`)
-      }
+      if (selected) askConfirm(selected, 'tap')
     }, 1200)
   }, [
     x,
@@ -414,18 +510,21 @@ export function BlindExam() {
     confirmTapCount,
     tapCount,
     choose,
+    askConfirm,
   ])
 
   function handleTouchEnd(e: React.TouchEvent) {
     if (x.phase !== 'question') return
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current)
-      longPressTimerRef.current = null
-    }
-
-    if (!touchStartRef.current) return
+    cancelLongPress()
     const start = touchStartRef.current
     touchStartRef.current = null
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false
+      suppressNextClick()
+      return
+    }
+    // Outside tap mode the screen has buttons; a touch on one must not also count as a tap answer.
+    if (!start || !tapMode) return
 
     const touchCount = start.touches
     const changeX = (e.changedTouches[0]?.clientX ?? start.x) - start.x
@@ -466,12 +565,20 @@ export function BlindExam() {
 
     // Gesture 3: Ketukan satu jari (Tap-to-Answer & Konfirmasi) di mana saja di layar
     if (touchCount === 1 && distance < 25 && x.phase === 'question') {
-      touchFiredRef.current = true
+      suppressNextClick()
       registerTap()
-      setTimeout(() => {
-        touchFiredRef.current = false
-      }, 300)
     }
+  }
+
+  // A hold swaps the layout while the finger is still down, so the touched element can vanish and its touchend
+  // never arrives. The browser may still send a click for that touch, landing on whatever is under the finger
+  // now: in tap mode that counted as tap A, in the normal layout it could press an option button. Capture phase
+  // runs before any button handler, so the click is dropped here.
+  function swallowGhostClick(e: React.MouseEvent) {
+    if (!longPressFiredRef.current && !touchFiredRef.current) return
+    longPressFiredRef.current = false
+    e.preventDefault()
+    e.stopPropagation()
   }
 
   // Fallback for Desktop Mouse Clicks when Tap Mode is active
@@ -521,12 +628,63 @@ export function BlindExam() {
     </h1>
   )
 
+  // Tap mode (PRD F-04b): the whole screen is one tap surface showing only the question. No option or
+  // navigation buttons, so a tap can't land on a control by accident; options are read aloud instead.
+  if (tapMode && x.phase === 'question' && q) {
+    const saved = x.answers[q.id]
+    const confirming = Boolean(pendingLetter || pendingSubmitConfirm)
+    const status = pendingSubmitConfirm
+      ? 'Kirim jawaban? Ketuk 1x = kirim · 2x = batal'
+      : pendingLetter
+        ? `Pilihan ${pendingLetter}. Yakin? Ketuk 1x = yakin · 2x = pilih ulang`
+        : tapCount > 0
+          ? `${tapCount} ketukan = ${LETTERS[Math.min(tapCount, LETTERS.length) - 1]}`
+          : saved
+            ? `Jawaban tersimpan: ${saved}`
+            : 'Ketuk layar untuk menjawab'
+    return (
+      <div
+        className="flex min-h-dvh w-full flex-col overflow-x-hidden bg-black px-5 py-6 text-white select-none touch-pan-y cursor-pointer [-webkit-touch-callout:none] sm:px-10 sm:py-10"
+        data-state={x.phase}
+        data-mode="tap"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
+        onClickCapture={swallowGhostClick}
+        onClick={handleContainerClick}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <p className="text-lg font-bold text-[#FFE600] sm:text-2xl">
+          Soal {x.index + 1} dari {total}
+        </p>
+        <div className="mx-auto flex w-full max-w-4xl flex-1 items-center py-8">{heading(q.text)}</div>
+        {/* Spoken feedback already covers this; the text is for a teacher or helper looking at the screen. */}
+        <p
+          aria-hidden="true"
+          className={cn(
+            'rounded-2xl border-4 border-[#FFE600] px-4 py-3 text-center text-lg font-black sm:text-2xl',
+            confirming ? 'bg-[#FFE600] text-black' : 'text-[#FFE600]',
+          )}
+        >
+          {status}
+        </p>
+        <p aria-hidden="true" className="mt-3 text-center text-xs text-white/60 sm:text-sm">
+          Ketuk 1x=A · 2x=B · 3x=C · 4x=D · 2 jari = ulang soal · geser = pindah soal · tahan 2 detik = keluar
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div
       className="flex min-h-dvh w-full overflow-x-hidden flex-col bg-black text-white select-none touch-manipulation cursor-pointer"
       data-state={x.phase}
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
+      onClickCapture={swallowGhostClick}
       onClick={handleContainerClick}
     >
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b-4 border-[#FFE600] px-4 py-3.5 sm:px-6 sm:py-4">
@@ -584,18 +742,6 @@ export function BlindExam() {
           >
             {hint}
           </p>
-        )}
-
-        {/* Status Mode Ketuk Banner (PRD F-04b) */}
-        {tapMode && x.phase === 'question' && (
-          <div className="rounded-2xl border-4 border-[#FFE600] bg-[#FFE600]/10 p-3.5 sm:p-4 text-center">
-            <span className="text-base sm:text-xl font-black text-[#FFE600] block">
-              MODE CADANGAN KETUK &amp; GESER AKTIF
-            </span>
-            <span className="mt-1 block text-xs sm:text-sm font-semibold text-white/90 leading-relaxed">
-              Ketuk 1x=A · 2x=B · 3x=C · 4x=D · 2 Jari=Ulang · Geser=Navigasi
-            </span>
-          </div>
         )}
 
         {x.phase === 'name' && (
@@ -814,7 +960,14 @@ export function BlindExam() {
 
       {x.phase === 'question' && (
         <footer className="border-t-4 border-[#FFE600] px-4 py-3.5 sm:px-6 sm:py-4 text-center text-sm sm:text-base md:text-lg text-white/80">
-          <div>Katakan: &ldquo;Jawab, B&rdquo; · &ldquo;Ulangi soal&rdquo; · &ldquo;Selesai ujian&rdquo;</div>
+          {pendingLetter ? (
+            <div>
+              Pilihan {pendingLetter} belum tersimpan. Katakan: &ldquo;Ya&rdquo; jika yakin · &ldquo;Tidak&rdquo; untuk
+              pilih ulang
+            </div>
+          ) : (
+            <div>Katakan: &ldquo;Jawab, B&rdquo; · &ldquo;Ulangi soal&rdquo; · &ldquo;Selesai ujian&rdquo;</div>
+          )}
           <div className="hidden md:block mt-1 text-sm text-white/60">
             Keyboard: A–D jawab · Spasi ulang · N lanjut · P kembali · T mode ketuk
           </div>

@@ -95,6 +95,8 @@ const has = (text: string, ...keys: string[]) => {
   return keys.some((k) => (k.includes(' ') ? words.join(' ').includes(k) : words.includes(k)))
 }
 
+const HEDGE_WORDS = new Set(['apa', 'gimana', 'bagaimana', 'mana', 'kenapa', 'mungkin', 'kayaknya', 'sepertinya', 'entah'])
+
 export const command = {
   finish: (t: string) => has(t, 'selesai', 'akhiri'),
   repeat: (t: string) => has(t, 'ulangi', 'ulang'),
@@ -103,4 +105,16 @@ export const command = {
   send: (t: string) => has(t, 'kirim', 'selesai', 'ya'),
   review: (t: string) => has(t, 'periksa', 'cek', 'kembali'),
   retry: (t: string) => has(t, 'coba lagi', 'coba', 'ulangi', 'kirim'),
+  /**
+   * A clear yes to "Apakah Anda yakin?". "Apa ya…" or "mungkin ya" is thinking aloud, and a long sentence that
+   * merely contains "ya" is unclear; both get asked again instead of saving. Check `no` first: "tidak yakin".
+   */
+  yes: (t: string) => {
+    const words = toWords(t)
+    if (words.some((w) => HEDGE_WORDS.has(w))) return false
+    if (words.includes('yakin')) return true
+    return words.length <= 3 && has(t, 'ya', 'iya', 'benar', 'betul', 'oke', 'ok', 'setuju')
+  },
+  no: (t: string) =>
+    has(t, 'tidak', 'enggak', 'nggak', 'gak', 'ndak', 'bukan', 'batal', 'ganti', 'salah', 'jangan', 'pilih ulang'),
 }
