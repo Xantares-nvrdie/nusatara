@@ -98,7 +98,7 @@ export function GlossaryDictionary() {
                 aria-pressed={moduleId === opt.id}
                 onClick={() => setModuleId(opt.id)}
                 className={cn(
-                  'rounded-full px-4 py-2 text-xs font-bold transition-all',
+                  'max-w-full rounded-full px-4 py-2 text-left text-xs font-bold wrap-anywhere transition-all',
                   moduleId === opt.id
                     ? 'bg-black font-black text-lime shadow-sm'
                     : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200',
@@ -136,22 +136,26 @@ export function GlossaryDictionary() {
           <p className="mt-1 text-xs text-neutral-400">Coba ubah kata pencarian atau pilih &quot;Semua modul&quot;.</p>
         </div>
       ) : (
-        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        // grid-cols-1 (minmax(0, 1fr)) and min-w-0 keep a long word from widening the card past the screen;
+        // wrap-anywhere then breaks words or URLs that don't fit on one line.
+        <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((item) => (
             <li
               key={`${item.moduleId}:${item.term}`}
-              className="flex flex-col justify-between gap-5 rounded-3xl border border-black/10 bg-white p-6 shadow-sm transition-all hover:border-black/25 hover:shadow-md"
+              className="flex min-w-0 flex-col justify-between gap-5 rounded-3xl border border-black/10 bg-white p-6 shadow-sm transition-all hover:border-black/25 hover:shadow-md"
             >
               <div>
-                <h2 className="text-xl font-black text-neutral-900">{item.term}</h2>
-                <p className="mt-1.5 text-sm font-medium leading-relaxed text-neutral-600">{item.definition}</p>
+                <h2 className="text-xl font-black text-neutral-900 wrap-anywhere">{item.term}</h2>
+                <p className="mt-1.5 text-sm font-medium leading-relaxed text-neutral-600 wrap-anywhere">
+                  {item.definition}
+                </p>
               </div>
               <Link
                 href={`/tunarungu/kartu/${item.moduleId}`}
-                className="group inline-flex items-center gap-1.5 border-t border-neutral-100 pt-3 text-xs font-bold text-neutral-500 hover:text-black"
+                className="group flex min-w-0 items-center gap-1.5 border-t border-neutral-100 pt-3 text-xs font-bold text-neutral-500 hover:text-black"
               >
                 <BookOpen className="size-3.5 shrink-0" aria-hidden="true" />
-                <span className="truncate">Dari modul: {item.moduleTitle}</span>
+                <span className="min-w-0 truncate">Dari modul: {item.moduleTitle}</span>
                 <ChevronRight className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
               </Link>
             </li>
