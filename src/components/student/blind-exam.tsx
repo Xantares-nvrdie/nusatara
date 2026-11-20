@@ -13,7 +13,7 @@ import { command, parseAnswer, parseDigits, parseName } from '@/lib/voice-comman
 type Phase = ReturnType<typeof useExamAttempt>['phase']
 
 const TAP_INSTRUCTIONS =
-  'Mode ketuk aktif. Ketuk satu kali untuk A, dua kali untuk B, tiga kali untuk C, atau empat kali untuk D, lalu ketuk sekali lagi jika yakin. Ketuk dua jari untuk ulangi soal. Geser kiri untuk kembali, geser kanan untuk lanjut. Tahan layar dua detik untuk keluar dari mode ketuk.'
+  'Mode ketuk aktif. Ketuk satu kali untuk A, dua kali untuk B, tiga kali untuk C, atau empat kali untuk D, lalu ketuk sekali lagi jika yakin. Ketuk dua jari untuk ulangi soal. Geser kiri untuk kembali, geser kanan untuk lanjut. Tahan layar dua detik untuk keluar dari mode ketuk. Tombol kembali ke mode suara ada di pojok kanan atas layar.'
 
 const VOICE_CONFIRM_HINT = 'Katakan: Ya, jika yakin. Atau: Tidak, untuk memilih ulang.'
 
@@ -408,10 +408,14 @@ export function BlindExam() {
     const t = e.touches[0]
     touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now(), touches }
 
-    // Tahan layar 2 detik: switches tap mode on, or off again. In tap mode the screen has no buttons, so this
-    // (or the T key) is the only way out (PRD F-04b).
+    // Tahan layar 2 detik: switches tap mode on, or off again (PRD F-04b).
     cancelLongPress()
     longPressFiredRef.current = false
+    // In tap mode the voice-mode button handles its own touch; it must not also count as a tap, swipe or hold.
+    if (tapMode && (e.target as HTMLElement).closest('button')) {
+      touchStartRef.current = null
+      return
+    }
     if (touches === 1) {
       longPressTimerRef.current = setTimeout(() => {
         longPressTimerRef.current = null
@@ -574,8 +578,11 @@ export function BlindExam() {
   // never arrives. The browser may still send a click for that touch, landing on whatever is under the finger
   // now: in tap mode that counted as tap A, in the normal layout it could press an option button. Capture phase
   // runs before any button handler, so the click is dropped here.
+  // The click emulated after a counted tap would count it twice. A click on a control comes from a touch on that
+  // control, which isn't counted, so it stays (a quick tap then a press on "Mode Suara" must still work).
   function swallowGhostClick(e: React.MouseEvent) {
-    if (!longPressFiredRef.current && !touchFiredRef.current) return
+    const onControl = Boolean((e.target as HTMLElement).closest('button, a'))
+    if (!longPressFiredRef.current && !(touchFiredRef.current && !onControl)) return
     longPressFiredRef.current = false
     e.preventDefault()
     e.stopPropagation()
@@ -586,7 +593,7 @@ export function BlindExam() {
     if (x.phase !== 'question') return
     if (touchFiredRef.current) return
     // Ignore clicks on header buttons/links so user can still toggle/navigate
-    if ((e.target as HTMLElement).closest('header')) return
+    if ((e.target as HTMLElement).closest('header, button, a')) return
     if (tapMode && x.phase === 'question') {
       registerTap()
     }
@@ -629,7 +636,8 @@ export function BlindExam() {
   )
 
   // Tap mode (PRD F-04b): the whole screen is one tap surface showing only the question. No option or
-  // navigation buttons, so a tap can't land on a control by accident; options are read aloud instead.
+  // navigation buttons, so a tap can't land on a control by accident; options are read aloud instead. The one
+  // control is the way back to voice mode, kept in the top corner away from where students tap.
   if (tapMode && x.phase === 'question' && q) {
     const saved = x.answers[q.id]
     const confirming = Boolean(pendingLetter || pendingSubmitConfirm)
@@ -655,9 +663,21 @@ export function BlindExam() {
         onClick={handleContainerClick}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <p className="text-lg font-bold text-[#FFE600] sm:text-2xl">
-          Soal {x.index + 1} dari {total}
-        </p>
+        <header className="flex items-center justify-between gap-3">
+          <p className="text-lg font-bold text-[#FFE600] sm:text-2xl">
+            Soal {x.index + 1} dari {total}
+          </p>
+          <button
+            type="button"
+            onClick={toggleVoiceMode}
+            className={cn(hcBtn, 'flex min-h-12 shrink-0 items-center gap-2 px-4 py-2.5 text-base sm:text-lg')}
+            title="Tekan V untuk kembali ke mode suara"
+          >
+            <Mic className="size-5 shrink-0" aria-hidden="true" />
+            <span>Mode Suara</span>
+            <span className="hidden md:inline">(V)</span>
+          </button>
+        </header>
         <div className="mx-auto flex w-full max-w-4xl flex-1 items-center py-8">{heading(q.text)}</div>
         {/* Spoken feedback already covers this; the text is for a teacher or helper looking at the screen. */}
         <p
